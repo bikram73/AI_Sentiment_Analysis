@@ -44,6 +44,14 @@ async function requestInference(url, text, token) {
   return { response, data };
 }
 
+function buildModelPath(modelId) {
+  // Keep namespace/model path shape expected by router APIs.
+  return String(modelId || "")
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
 function isAuthLikeError(response, data) {
   const status = response?.status || 0;
   if (status === 401 || status === 403) {
@@ -168,7 +176,7 @@ module.exports = async function handler(req, res) {
 
     const token = process.env.HUGGINGFACE_API_TOKEN || "";
 
-    const encodedModel = encodeURIComponent(DEFAULT_MODEL);
+    const encodedModel = buildModelPath(DEFAULT_MODEL);
     const candidateUrls = [
       `${ROUTER_BASE_URL}/${encodedModel}`,
       `${LEGACY_BASE_URL}/${encodedModel}`
@@ -176,13 +184,15 @@ module.exports = async function handler(req, res) {
 
     let response;
     let data;
+    let lastErrorText = "";
 
     for (const url of candidateUrls) {
+      // Attempt with token first, then anonymous (public model path).
       let result = await requestInference(url, text, token);
       response = result.response;
       data = result.data;
+      lastErrorText = String(data?.error || "");
 
-      const errText = String(data?.error || "").toLowerCase();
       const permissionError = isAuthLikeError(response, data);
 
       // Some token types cannot call provider-routed inference. Retry once
@@ -191,15 +201,10 @@ module.exports = async function handler(req, res) {
         result = await requestInference(url, text, "");
         response = result.response;
         data = result.data;
+        lastErrorText = String(data?.error || "");
       }
 
       if (response.ok) {
-        break;
-      }
-
-      const latestErr = String(data?.error || "").toLowerCase();
-      const canRetryLegacy = latestErr.includes("no longer supported") || latestErr.includes("router.huggingface.co");
-      if (!canRetryLegacy) {
         break;
       }
     }
@@ -211,7 +216,8 @@ module.exports = async function handler(req, res) {
         confidence: fallback.confidence,
         model: "local-fallback",
         source: "local-fallback",
-        warning: "Hugging Face inference unavailable. Returned local fallback sentiment."
+        warning: "Hugging Face inference unavailable. Returned local fallback sentiment.",
+        reason: lastErrorText || "No successful response from inference endpoints"
       });
     }
 
