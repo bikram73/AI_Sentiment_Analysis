@@ -2,6 +2,16 @@ const DEFAULT_MODEL = process.env.HF_MODEL || "cardiffnlp/twitter-roberta-base-s
 const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
 const LEGACY_BASE_URL = "https://api-inference.huggingface.co/models";
 
+const POSITIVE_WORDS = new Set([
+  "amazing", "awesome", "best", "brilliant", "excellent", "fantastic", "good", "great", "happy",
+  "impressive", "incredible", "love", "loved", "nice", "perfect", "recommend", "satisfied", "super"
+]);
+
+const NEGATIVE_WORDS = new Set([
+  "awful", "bad", "broken", "disappointed", "error", "hate", "horrible", "issue", "poor",
+  "refund", "sad", "slow", "terrible", "ugly", "unhappy", "worst", "fail", "failed"
+]);
+
 async function requestInference(url, text, token) {
   const headers = {
     "Content-Type": "application/json"
@@ -31,6 +41,52 @@ async function requestInference(url, text, token) {
   }
 
   return { response, data };
+}
+
+function isAuthLikeError(response, data) {
+  const status = response?.status || 0;
+  if (status === 401 || status === 403) {
+    return true;
+  }
+
+  const errText = String(data?.error || "").toLowerCase();
+  return (
+    errText.includes("unauthorized") ||
+    errText.includes("authorization") ||
+    errText.includes("credentials") ||
+    errText.includes("insufficient permissions") ||
+    errText.includes("does not have sufficient permissions")
+  );
+}
+
+function localFallbackSentiment(text) {
+  const words = (text.toLowerCase().match(/[a-z']+/g) || []);
+
+  let positive = 0;
+  let negative = 0;
+
+  for (const w of words) {
+    if (POSITIVE_WORDS.has(w)) {
+      positive += 1;
+    }
+    if (NEGATIVE_WORDS.has(w)) {
+      negative += 1;
+    }
+  }
+
+  const totalHits = positive + negative;
+
+  if (totalHits === 0 || Math.abs(positive - negative) <= 1) {
+    return { sentiment: "Neutral", confidence: 55.0 };
+  }
+
+  if (positive > negative) {
+    const ratio = positive / totalHits;
+    return { sentiment: "Positive", confidence: Number((60 + ratio * 35).toFixed(2)) };
+  }
+
+  const ratio = negative / totalHits;
+  return { sentiment: "Negative", confidence: Number((60 + ratio * 35).toFixed(2)) };
 }
 
 function toTitle(text) {
@@ -93,7 +149,7 @@ module.exports = async function handler(req, res) {
       data = result.data;
 
       const errText = String(data?.error || "").toLowerCase();
-      const permissionError = errText.includes("does not have sufficient permissions") || errText.includes("insufficient permissions");
+      const permissionError = isAuthLikeError(response, data);
 
       // Some token types cannot call provider-routed inference. Retry once
       // anonymously for public models before failing.
@@ -107,16 +163,20 @@ module.exports = async function handler(req, res) {
         break;
       }
 
-      const canRetryLegacy = errText.includes("no longer supported") || errText.includes("router.huggingface.co");
+      const latestErr = String(data?.error || "").toLowerCase();
+      const canRetryLegacy = latestErr.includes("no longer supported") || latestErr.includes("router.huggingface.co");
       if (!canRetryLegacy) {
         break;
       }
     }
 
     if (!response || !response.ok) {
-      return res.status(response?.status || 502).json({
-        error: data?.error || "Inference request failed",
-        hint: "Use a Hugging Face token with Read permission or remove HUGGINGFACE_API_TOKEN to use anonymous access for public models."
+      const fallback = localFallbackSentiment(text);
+      return res.status(200).json({
+        sentiment: fallback.sentiment,
+        confidence: fallback.confidence,
+        model: "local-fallback",
+        warning: "Hugging Face inference unavailable. Returned local fallback sentiment."
       });
     }
 
