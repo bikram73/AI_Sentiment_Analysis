@@ -1,4 +1,6 @@
 const DEFAULT_MODEL = process.env.HF_MODEL || "cardiffnlp/twitter-roberta-base-sentiment-latest";
+const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
+const LEGACY_BASE_URL = "https://api-inference.huggingface.co/models";
 
 function toTitle(text) {
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
@@ -51,9 +53,17 @@ module.exports = async function handler(req, res) {
       headers.Authorization = `Bearer ${process.env.HUGGINGFACE_API_TOKEN}`;
     }
 
-    const response = await fetch(
-      `https://api-inference.huggingface.co/models/${encodeURIComponent(DEFAULT_MODEL)}`,
-      {
+    const encodedModel = encodeURIComponent(DEFAULT_MODEL);
+    const candidateUrls = [
+      `${ROUTER_BASE_URL}/${encodedModel}`,
+      `${LEGACY_BASE_URL}/${encodedModel}`
+    ];
+
+    let response;
+    let data;
+
+    for (const url of candidateUrls) {
+      response = await fetch(url, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -62,14 +72,30 @@ module.exports = async function handler(req, res) {
             wait_for_model: true
           }
         })
+      });
+
+      const raw = await response.text();
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { error: raw || "Invalid response from inference API" };
       }
-    );
 
-    const data = await response.json();
+      if (response.ok) {
+        break;
+      }
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: data?.error || "Inference request failed"
+      const errText = String(data?.error || "").toLowerCase();
+      const canRetryLegacy = errText.includes("no longer supported") || errText.includes("router.huggingface.co");
+      if (!canRetryLegacy) {
+        break;
+      }
+    }
+
+    if (!response || !response.ok) {
+      return res.status(response?.status || 502).json({
+        error: data?.error || "Inference request failed",
+        hint: "Set HUGGINGFACE_API_TOKEN in Vercel environment variables and redeploy."
       });
     }
 
