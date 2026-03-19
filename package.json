@@ -1,0 +1,10 @@
+{
+  "name": "ai-sentiment-analysis-web-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vercel sentiment API fallback dependencies",
+  "type": "commonjs",
+  "dependencies": {
+    "sentiment": "^5.0.2"
+  }
+}

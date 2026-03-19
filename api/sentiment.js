@@ -2,16 +2,8 @@ const DEFAULT_MODEL = process.env.HF_MODEL || "distilbert-base-uncased-finetuned
 const NEUTRAL_THRESHOLD = Number(process.env.NEUTRAL_THRESHOLD || 0.7);
 const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
 const LEGACY_BASE_URL = "https://api-inference.huggingface.co/models";
-
-const POSITIVE_WORDS = new Set([
-  "amazing", "awesome", "best", "brilliant", "excellent", "fantastic", "good", "great", "happy",
-  "impressive", "incredible", "love", "loved", "nice", "perfect", "recommend", "satisfied", "super"
-]);
-
-const NEGATIVE_WORDS = new Set([
-  "awful", "bad", "broken", "disappointed", "error", "hate", "horrible", "issue", "poor",
-  "refund", "sad", "slow", "terrible", "ugly", "unhappy", "worst", "fail", "failed"
-]);
+const Sentiment = require("sentiment");
+const sentimentEngine = new Sentiment();
 
 async function requestInference(url, text, token) {
   const headers = {
@@ -69,33 +61,19 @@ function isAuthLikeError(response, data) {
 }
 
 function localFallbackSentiment(text) {
-  const words = (text.toLowerCase().match(/[a-z']+/g) || []);
+  const result = sentimentEngine.analyze(String(text || ""));
+  const comparative = Number(result.comparative || 0);
+  const magnitude = Math.min(1.0, Math.abs(comparative) / 2.5);
 
-  let positive = 0;
-  let negative = 0;
-
-  for (const w of words) {
-    if (POSITIVE_WORDS.has(w)) {
-      positive += 1;
-    }
-    if (NEGATIVE_WORDS.has(w)) {
-      negative += 1;
-    }
+  if (Math.abs(comparative) < 0.08) {
+    return { sentiment: "Neutral", confidence: Number((55 + magnitude * 20).toFixed(2)) };
   }
 
-  const totalHits = positive + negative;
-
-  if (totalHits === 0 || Math.abs(positive - negative) <= 1) {
-    return { sentiment: "Neutral", confidence: 55.0 };
+  if (comparative > 0) {
+    return { sentiment: "Positive", confidence: Number((62 + magnitude * 33).toFixed(2)) };
   }
 
-  if (positive > negative) {
-    const ratio = positive / totalHits;
-    return { sentiment: "Positive", confidence: Number((60 + ratio * 35).toFixed(2)) };
-  }
-
-  const ratio = negative / totalHits;
-  return { sentiment: "Negative", confidence: Number((60 + ratio * 35).toFixed(2)) };
+  return { sentiment: "Negative", confidence: Number((62 + magnitude * 33).toFixed(2)) };
 }
 
 function toTitle(text) {
@@ -214,9 +192,8 @@ module.exports = async function handler(req, res) {
       return res.status(200).json({
         sentiment: fallback.sentiment,
         confidence: fallback.confidence,
-        model: "local-fallback",
+        model: "sentiment-js-fallback",
         source: "local-fallback",
-        warning: "Hugging Face inference unavailable. Returned local fallback sentiment.",
         reason: lastErrorText || "No successful response from inference endpoints"
       });
     }
