@@ -1,4 +1,5 @@
-const DEFAULT_MODEL = process.env.HF_MODEL || "cardiffnlp/twitter-roberta-base-sentiment-latest";
+const DEFAULT_MODEL = process.env.HF_MODEL || "distilbert-base-uncased-finetuned-sst-2-english";
+const NEUTRAL_THRESHOLD = Number(process.env.NEUTRAL_THRESHOLD || 0.7);
 const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
 const LEGACY_BASE_URL = "https://api-inference.huggingface.co/models";
 
@@ -108,6 +109,39 @@ function mapLabel(label) {
   return labelMap[raw] || toTitle(raw || "Neutral");
 }
 
+function normalizeLabel(label) {
+  const mapped = mapLabel(label);
+  const low = String(mapped || "").toLowerCase();
+  if (low.includes("positive")) {
+    return "Positive";
+  }
+  if (low.includes("negative")) {
+    return "Negative";
+  }
+  if (low.includes("neutral")) {
+    return "Neutral";
+  }
+  return "Neutral";
+}
+
+function toAppStyleSentiment(prediction) {
+  const rawLabel = normalizeLabel(prediction?.label);
+  const score = Number(prediction?.score || 0);
+
+  // Keep parity with local app.py behavior for binary models.
+  if ((rawLabel === "Positive" || rawLabel === "Negative") && score < NEUTRAL_THRESHOLD) {
+    return {
+      sentiment: "Neutral",
+      confidence: Number(((1 - score) * 100).toFixed(2))
+    };
+  }
+
+  return {
+    sentiment: rawLabel,
+    confidence: Number((score * 100).toFixed(2))
+  };
+}
+
 function bestPrediction(result) {
   if (Array.isArray(result) && Array.isArray(result[0])) {
     return result[0].reduce((best, curr) => (curr.score > best.score ? curr : best), result[0][0]);
@@ -176,18 +210,19 @@ module.exports = async function handler(req, res) {
         sentiment: fallback.sentiment,
         confidence: fallback.confidence,
         model: "local-fallback",
+        source: "local-fallback",
         warning: "Hugging Face inference unavailable. Returned local fallback sentiment."
       });
     }
 
     const prediction = bestPrediction(data);
-    const sentiment = mapLabel(prediction.label);
-    const confidence = Number(prediction.score || 0) * 100;
+    const normalized = toAppStyleSentiment(prediction);
 
     return res.status(200).json({
-      sentiment,
-      confidence: Number(confidence.toFixed(2)),
-      model: DEFAULT_MODEL
+      sentiment: normalized.sentiment,
+      confidence: normalized.confidence,
+      model: DEFAULT_MODEL,
+      source: "huggingface"
     });
   } catch (error) {
     return res.status(500).json({
