@@ -5,6 +5,24 @@ const LEGACY_BASE_URL = "https://api-inference.huggingface.co/models";
 const Sentiment = require("sentiment");
 const sentimentEngine = new Sentiment();
 
+const STRONG_NEGATIVE_TERMS = [
+  "worst", "refund", "failing", "failed", "broke", "broken", "confusing",
+  "hard to navigate", "terrible", "disappointed", "delay", "delayed", "issue"
+];
+
+const STRONG_POSITIVE_TERMS = [
+  "exceeded", "fantastic", "highly recommended", "solved", "quickly", "delicious",
+  "amazing", "great", "love", "thrilled"
+];
+
+const NEGATED_POSITIVE_PATTERNS = [
+  "not good", "not great", "not happy", "not satisfied", "not amazing"
+];
+
+const NEGATED_NEGATIVE_PATTERNS = [
+  "not bad", "not terrible", "not worst", "not awful"
+];
+
 async function requestInference(url, text, token) {
   const headers = {
     "Content-Type": "application/json"
@@ -61,19 +79,73 @@ function isAuthLikeError(response, data) {
 }
 
 function localFallbackSentiment(text) {
-  const result = sentimentEngine.analyze(String(text || ""));
-  const comparative = Number(result.comparative || 0);
-  const magnitude = Math.min(1.0, Math.abs(comparative) / 2.5);
+  const rawText = String(text || "");
+  const lower = rawText.toLowerCase();
 
-  if (Math.abs(comparative) < 0.08) {
-    return { sentiment: "Neutral", confidence: Number((55 + magnitude * 20).toFixed(2)) };
+  // Base lexicon score from sentiment package.
+  const result = sentimentEngine.analyze(rawText);
+  let score = Number(result.comparative || 0) * 3.2;
+
+  // In mixed sentences, sentiment after contrast words is often dominant.
+  const contrastParts = lower.split(/\b(?:but|however|though|although|yet)\b/g);
+  if (contrastParts.length > 1) {
+    const tail = contrastParts[contrastParts.length - 1].trim();
+    if (tail) {
+      const tailScore = Number(sentimentEngine.analyze(tail).comparative || 0) * 4.2;
+      score = score * 0.35 + tailScore * 0.65;
+    }
   }
 
-  if (comparative > 0) {
-    return { sentiment: "Positive", confidence: Number((62 + magnitude * 33).toFixed(2)) };
+  // Phrase-level corrections for common review patterns.
+  for (const term of STRONG_NEGATIVE_TERMS) {
+    if (lower.includes(term)) {
+      score -= 1.15;
+    }
   }
 
-  return { sentiment: "Negative", confidence: Number((62 + magnitude * 33).toFixed(2)) };
+  for (const term of STRONG_POSITIVE_TERMS) {
+    if (lower.includes(term)) {
+      score += 0.95;
+    }
+  }
+
+  for (const phrase of NEGATED_POSITIVE_PATTERNS) {
+    if (lower.includes(phrase)) {
+      score -= 1.0;
+    }
+  }
+
+  for (const phrase of NEGATED_NEGATIVE_PATTERNS) {
+    if (lower.includes(phrase)) {
+      score += 0.75;
+    }
+  }
+
+  // Force Neutral for explicitly balanced phrases.
+  if (lower.includes("nothing special") || lower.includes("average overall")) {
+    score *= 0.35;
+  }
+
+  const magnitude = Math.min(1.0, Math.abs(score) / 3.5);
+
+  if (Math.abs(score) < 0.42) {
+    return {
+      sentiment: "Neutral",
+      confidence: Number((58 + magnitude * 20).toFixed(2))
+    };
+  }
+
+  if (score > 0) {
+    return {
+      sentiment: "Positive",
+      confidence: Number((64 + magnitude * 31).toFixed(2))
+    };
+  }
+
+  return {
+    sentiment: "Negative",
+    confidence: Number((64 + magnitude * 31).toFixed(2))
+  };
 }
 
 function toTitle(text) {
