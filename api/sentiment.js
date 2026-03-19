@@ -2,6 +2,37 @@ const DEFAULT_MODEL = process.env.HF_MODEL || "cardiffnlp/twitter-roberta-base-s
 const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
 const LEGACY_BASE_URL = "https://api-inference.huggingface.co/models";
 
+async function requestInference(url, text, token) {
+  const headers = {
+    "Content-Type": "application/json"
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      inputs: text,
+      options: {
+        wait_for_model: true
+      }
+    })
+  });
+
+  const raw = await response.text();
+  let data;
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { error: raw || "Invalid response from inference API" };
+  }
+
+  return { response, data };
+}
+
 function toTitle(text) {
   return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
 }
@@ -45,13 +76,7 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: "Text is required" });
     }
 
-    const headers = {
-      "Content-Type": "application/json"
-    };
-
-    if (process.env.HUGGINGFACE_API_TOKEN) {
-      headers.Authorization = `Bearer ${process.env.HUGGINGFACE_API_TOKEN}`;
-    }
+    const token = process.env.HUGGINGFACE_API_TOKEN || "";
 
     const encodedModel = encodeURIComponent(DEFAULT_MODEL);
     const candidateUrls = [
@@ -63,29 +88,25 @@ module.exports = async function handler(req, res) {
     let data;
 
     for (const url of candidateUrls) {
-      response = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          inputs: text,
-          options: {
-            wait_for_model: true
-          }
-        })
-      });
+      let result = await requestInference(url, text, token);
+      response = result.response;
+      data = result.data;
 
-      const raw = await response.text();
-      try {
-        data = raw ? JSON.parse(raw) : {};
-      } catch {
-        data = { error: raw || "Invalid response from inference API" };
+      const errText = String(data?.error || "").toLowerCase();
+      const permissionError = errText.includes("does not have sufficient permissions") || errText.includes("insufficient permissions");
+
+      // Some token types cannot call provider-routed inference. Retry once
+      // anonymously for public models before failing.
+      if (!response.ok && token && permissionError) {
+        result = await requestInference(url, text, "");
+        response = result.response;
+        data = result.data;
       }
 
       if (response.ok) {
         break;
       }
 
-      const errText = String(data?.error || "").toLowerCase();
       const canRetryLegacy = errText.includes("no longer supported") || errText.includes("router.huggingface.co");
       if (!canRetryLegacy) {
         break;
@@ -95,7 +116,7 @@ module.exports = async function handler(req, res) {
     if (!response || !response.ok) {
       return res.status(response?.status || 502).json({
         error: data?.error || "Inference request failed",
-        hint: "Set HUGGINGFACE_API_TOKEN in Vercel environment variables and redeploy."
+        hint: "Use a Hugging Face token with Read permission or remove HUGGINGFACE_API_TOKEN to use anonymous access for public models."
       });
     }
 
