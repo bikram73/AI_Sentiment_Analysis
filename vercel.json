@@ -8,15 +8,16 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "src": "/api/sentiment",
+      "dest": "/api/sentiment.js"
+    },
+    {
+      "src": "/(.*\\.html)$",
+      "dest": "/$1"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
     }
-  ],
-  "env": {
-    "HF_TOKEN": "@HF_TOKEN",
-    "HF_MODEL": "@HF_MODEL",
-    "HF_MODEL_MULTILINGUAL": "@HF_MODEL_MULTILINGUAL",
-    "HF_MODEL_EMOTION": "@HF_MODEL_EMOTION",
-    "NEUTRAL_THRESHOLD": "@NEUTRAL_THRESHOLD"
-  }
+  ]
 }
