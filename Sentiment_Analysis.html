@@ -191,36 +191,53 @@
         resize: vertical;
       }
 
-      .keyword-highlight-shell {
-        margin-top: 10px;
-        border: 1px solid #dbe3f3;
+      .text-highlight-wrap {
+        position: relative;
+        margin-top: 0;
+        border: 1px solid #c9d5ea;
         border-radius: 14px;
-        background: #f8fbff;
-        padding: 10px;
-      }
-
-      .keyword-highlight-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 8px;
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .keyword-preview {
-        min-height: 74px;
-        max-height: 180px;
-        overflow: auto;
-        border: 1px solid #d6e1f3;
         background: #fff;
-        border-radius: 10px;
-        padding: 10px;
-        line-height: 1.5;
+        overflow: hidden;
+      }
+
+      .text-highlight-wrap:focus-within {
+        border-color: #5ea8ff;
+        box-shadow: 0 0 0 4px rgba(94, 168, 255, 0.16);
+      }
+
+      .text-highlight-backdrop {
+        position: absolute;
+        inset: 0;
+        padding: 13px;
+        font-size: 16px;
+        line-height: 1.45;
+        font-family: inherit;
         white-space: pre-wrap;
         word-break: break-word;
         color: #2f3a4f;
-        font-size: 14px;
+        overflow: auto;
+        pointer-events: none;
+      }
+
+      .text-highlight-wrap textarea {
+        position: relative;
+        z-index: 2;
+        border: none;
+        background: transparent;
+        color: transparent;
+        caret-color: var(--ink);
+        text-shadow: 0 0 0 #2f3a4f;
+        box-shadow: none;
+      }
+
+      .text-highlight-wrap textarea:focus {
+        border-color: transparent;
+        box-shadow: none;
+      }
+
+      .text-highlight-wrap textarea::placeholder {
+        color: #7a8aa6;
+        text-shadow: none;
       }
 
       .kw-positive {
@@ -416,14 +433,9 @@
           </select>
 
           <label for="text" style="display:block; margin-top:12px;"><strong>Input Text</strong></label>
-          <textarea id="text" placeholder="Type your review, feedback, or message here..."></textarea>
-
-          <div class="keyword-highlight-shell">
-            <div class="keyword-highlight-head">
-              <span><strong>Keyword Highlighting</strong> (live)</span>
-              <span>Green = positive, Red = negative</span>
-            </div>
-            <div class="keyword-preview" id="keywordPreview">Your highlighted text will appear here as you type.</div>
+          <div class="text-highlight-wrap">
+            <div class="text-highlight-backdrop" id="textBackdrop"></div>
+            <textarea id="text" placeholder="Type your review, feedback, or message here..."></textarea>
           </div>
 
           <div class="actions">
@@ -550,7 +562,7 @@
       const statusEl = document.getElementById("status");
       const sentimentChipEl = document.getElementById("sentimentChip");
       const detailsBodyEl = document.getElementById("detailsBody");
-      const keywordPreviewEl = document.getElementById("keywordPreview");
+      const textBackdropEl = document.getElementById("textBackdrop");
 
       const POSITIVE_KEYWORDS = [
         "love", "great", "excellent", "amazing", "fantastic", "helpful", "clean", "fast", "good",
@@ -594,11 +606,6 @@
 
       function renderKeywordHighlights(text) {
         const raw = String(text || "");
-        if (!raw.trim()) {
-          keywordPreviewEl.textContent = "Your highlighted text will appear here as you type.";
-          return;
-        }
-
         let html = escapeHtml(raw);
 
         const positivePattern = new RegExp(`\\b(${POSITIVE_KEYWORDS.map(escapeRegExp).join("|")})\\b`, "gi");
@@ -607,7 +614,9 @@
         html = html.replace(positivePattern, '<span class="kw-positive">$1</span>');
         html = html.replace(negativePattern, '<span class="kw-negative">$1</span>');
 
-        keywordPreviewEl.innerHTML = html;
+        // Preserve visual height for empty content so caret alignment stays stable.
+        textBackdropEl.innerHTML = html || "\u200b";
+        textBackdropEl.scrollTop = textInput.scrollTop;
       }
 
       function setSentimentChip(sentiment) {
@@ -713,6 +722,10 @@
 
       textInput.addEventListener("input", () => {
         renderKeywordHighlights(textInput.value);
+      });
+
+      textInput.addEventListener("scroll", () => {
+        textBackdropEl.scrollTop = textInput.scrollTop;
       });
 
       clearBtn.addEventListener("click", () => {
