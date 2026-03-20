@@ -1,7 +1,6 @@
 const DEFAULT_MODEL = process.env.HF_MODEL || "distilbert-base-uncased-finetuned-sst-2-english";
 const NEUTRAL_THRESHOLD = Number(process.env.NEUTRAL_THRESHOLD || 0.7);
 const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
-const LEGACY_BASE_URL = "https://api-inference.huggingface.co/models";
 const Sentiment = require("sentiment");
 const sentimentEngine = new Sentiment();
 
@@ -227,10 +226,7 @@ module.exports = async function handler(req, res) {
     const token = process.env.HUGGINGFACE_API_TOKEN || "";
 
     const encodedModel = buildModelPath(DEFAULT_MODEL);
-    const candidateUrls = [
-      `${ROUTER_BASE_URL}/${encodedModel}`,
-      `${LEGACY_BASE_URL}/${encodedModel}`
-    ];
+    const candidateUrls = [`${ROUTER_BASE_URL}/${encodedModel}`];
 
     let response;
     let data;
@@ -241,7 +237,7 @@ module.exports = async function handler(req, res) {
       let result = await requestInference(url, text, token);
       response = result.response;
       data = result.data;
-      lastErrorText = String(data?.error || "");
+      lastErrorText = `HTTP ${response.status}: ${String(data?.error || "Unknown error")}`;
 
       const permissionError = isAuthLikeError(response, data);
 
@@ -251,7 +247,7 @@ module.exports = async function handler(req, res) {
         result = await requestInference(url, text, "");
         response = result.response;
         data = result.data;
-        lastErrorText = String(data?.error || "");
+        lastErrorText = `HTTP ${response.status}: ${String(data?.error || "Unknown error")}`;
       }
 
       if (response.ok) {
