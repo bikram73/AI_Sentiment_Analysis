@@ -100,14 +100,15 @@ Vercel uses:
 ```text
 AI_Sentiment_Analysis_Web_App/
 ├── api/
-│   └── sentiment.js         # Vercel serverless API route
-├── app.py                   # Gradio app (Python)
-├── index.html               # Vercel frontend UI
-├── vercel.json              # Vercel routing config
-├── requirements.txt         # Python dependencies for Gradio app
-├── .env.example             # Example environment variables
-├── .gitignore               # Git ignore rules
-└── README.md                # Documentation
+│   └── sentiment.js          # Vercel serverless API route
+├── app.py                    # Gradio app (Python)
+├── index.html                # Home page project details
+├── Sentimental_Analysis.html # AI Sentimental Analysis Predictor
+├── vercel.json               # Vercel routing config
+├── requirements.txt          # Python dependencies for Gradio app
+├── .env.example              # Example environment variables
+├── .gitignore                # Git ignore rules
+└── README.md                 # Documentation
 ```
 
 ## 🧪 Example Inputs
@@ -127,5 +128,3 @@ On first launch, the model is downloaded and cached locally. This can take time 
 - User history and export options
 - Confidence trend charts
 - Custom model selection per analysis mode
-
-
