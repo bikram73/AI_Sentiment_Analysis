@@ -64,6 +64,14 @@ function cleanToken(tokenValue) {
   return token;
 }
 
+function cleanModelId(modelValue) {
+  let model = String(modelValue || "").trim();
+  if ((model.startsWith('"') && model.endsWith('"')) || (model.startsWith("'") && model.endsWith("'"))) {
+    model = model.slice(1, -1).trim();
+  }
+  return model;
+}
+
 function summarizeHfError(response, data) {
   const status = response?.status || 0;
   const rawError = String(data?.error || "");
@@ -262,14 +270,22 @@ module.exports = async function handler(req, res) {
       process.env.HUGGINGFACE_API_TOKEN || process.env.HF_TOKEN || process.env.HUGGINGFACEHUB_API_TOKEN || ""
     );
 
-    const encodedModel = buildModelPath(DEFAULT_MODEL);
-    const candidateUrls = [`${ROUTER_BASE_URL}/${encodedModel}`];
+    const configuredModel = cleanModelId(DEFAULT_MODEL);
+    const candidateModels = [
+      configuredModel,
+      "cardiffnlp/twitter-roberta-base-sentiment-latest",
+      "distilbert-base-uncased-finetuned-sst-2-english"
+    ].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
 
     let response;
     let data;
     let lastErrorText = "";
+    let selectedModel = configuredModel;
 
-    for (const url of candidateUrls) {
+    for (const modelId of candidateModels) {
+      const url = `${ROUTER_BASE_URL}/${buildModelPath(modelId)}`;
+      selectedModel = modelId;
+
       // Attempt with token first, then anonymous (public model path).
       let result = await requestInference(url, text, token);
       response = result.response;
@@ -290,6 +306,14 @@ module.exports = async function handler(req, res) {
       if (response.ok) {
         break;
       }
+
+      // 404 often means wrong or unavailable model ID. Try next known model.
+      if (response.status === 404) {
+        continue;
+      }
+
+      // For non-404 failures, stop trying model variants.
+      break;
     }
 
     if (!response || !response.ok) {
@@ -309,7 +333,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       sentiment: normalized.sentiment,
       confidence: normalized.confidence,
-      model: DEFAULT_MODEL,
+      model: selectedModel,
       source: "huggingface"
     });
   } catch (error) {
