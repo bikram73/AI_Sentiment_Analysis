@@ -7,6 +7,7 @@ const Sentiment = require("sentiment");
 const sentimentEngine = new Sentiment();
 
 const VALID_MODES = new Set(["sentiment", "emotion", "multilingual", "absa"]);
+const MAX_BATCH_SIZE = 25;
 
 const STRONG_NEGATIVE_TERMS = [
   "worst", "refund", "failing", "failed", "broke", "broken", "confusing",
@@ -393,6 +394,114 @@ function getCandidateModels(mode, configuredModel) {
   ].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
 }
 
+async function analyzeSingleText(text, mode, token, configuredModel) {
+  if (mode === "absa") {
+    const absa = buildAbsaResult(text);
+    return {
+      mode,
+      sentiment: absa.overallSentiment,
+      confidence: absa.overallConfidence,
+      aspects: absa.aspects,
+      model: "absa-heuristic",
+      source: "local-absa"
+    };
+  }
+
+  const candidateModels = getCandidateModels(mode, configuredModel);
+
+  let response;
+  let data;
+  let lastErrorText = "";
+  let selectedModel = configuredModel;
+
+  for (const modelId of candidateModels) {
+    const url = `${ROUTER_BASE_URL}/${buildModelPath(modelId)}`;
+    selectedModel = modelId;
+
+    // Attempt with token first, then anonymous (public model path).
+    const extraBody = mode === "emotion" ? { parameters: { top_k: null } } : {};
+    let result = await requestInference(url, text, token, extraBody);
+    response = result.response;
+    data = result.data;
+    lastErrorText = summarizeHfError(response, data);
+
+    const permissionError = isAuthLikeError(response, data);
+
+    // Some token types cannot call provider-routed inference. Retry once
+    // anonymously for public models before failing.
+    if (!response.ok && token && permissionError) {
+      result = await requestInference(url, text, "", extraBody);
+      response = result.response;
+      data = result.data;
+      lastErrorText = summarizeHfError(response, data);
+    }
+
+    if (response.ok) {
+      break;
+    }
+
+    // 404 often means wrong or unavailable model ID. Try next known model.
+    if (response.status === 404) {
+      continue;
+    }
+
+    // For non-404 failures, stop trying model variants.
+    break;
+  }
+
+  if (!response || !response.ok) {
+    if (mode === "emotion") {
+      const fallbackEmotion = emotionFromSentimentFallback(text);
+      return {
+        mode,
+        emotion: fallbackEmotion.emotion,
+        confidence: fallbackEmotion.confidence,
+        top_emotions: [{ label: fallbackEmotion.emotion, score: Number((fallbackEmotion.confidence / 100).toFixed(4)) }],
+        model: "emotion-fallback",
+        source: "local-fallback",
+        reason: lastErrorText || "No successful response from inference endpoints"
+      };
+    }
+
+    const fallback = localFallbackSentiment(text);
+    return {
+      mode,
+      sentiment: fallback.sentiment,
+      confidence: fallback.confidence,
+      model: "sentiment-js-fallback",
+      source: "local-fallback",
+      reason: lastErrorText || "No successful response from inference endpoints"
+    };
+  }
+
+  if (mode === "emotion") {
+    const predictions = flattenPredictions(data)
+      .map((item) => ({ label: mapEmotionLabel(item.label), score: Number(item.score || 0) }))
+      .sort((a, b) => b.score - a.score);
+
+    const top = predictions[0] || { label: "Neutral", score: 0 };
+    return {
+      mode,
+      emotion: top.label,
+      confidence: Number((top.score * 100).toFixed(2)),
+      top_emotions: predictions.slice(0, 5),
+      model: selectedModel,
+      source: "huggingface"
+    };
+  }
+
+  const prediction = bestPrediction(data);
+  const normalized = toAppStyleSentiment(prediction);
+
+  return {
+    mode,
+    sentiment: normalized.sentiment,
+    confidence: normalized.confidence,
+    model: selectedModel,
+    source: "huggingface"
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -400,10 +509,22 @@ module.exports = async function handler(req, res) {
 
   try {
     const text = String(req.body?.text || "").trim();
+    const rawTexts = Array.isArray(req.body?.texts) ? req.body.texts : null;
     const mode = getRequestedMode(req.body?.mode);
+    const batchTexts = rawTexts
+      ? rawTexts
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
+      : [];
 
-    if (!text) {
+    if (!text && batchTexts.length === 0) {
       return res.status(400).json({ error: "Text is required" });
+    }
+
+    if (batchTexts.length > MAX_BATCH_SIZE) {
+      return res.status(400).json({
+        error: `Batch size exceeded. Maximum ${MAX_BATCH_SIZE} items are allowed per request.`
+      });
     }
 
     const token = cleanToken(
@@ -412,111 +533,33 @@ module.exports = async function handler(req, res) {
 
     const configuredModel = cleanModelId(DEFAULT_MODEL);
 
-    if (mode === "absa") {
-      const absa = buildAbsaResult(text);
+    if (batchTexts.length > 0) {
+      const results = await Promise.all(
+        batchTexts.map(async (item, idx) => {
+          const analyzed = await analyzeSingleText(item, mode, token, configuredModel);
+          return {
+            index: idx + 1,
+            text: item,
+            ...analyzed
+          };
+        })
+      );
+
+      const averageConfidence = Number(
+        (results.reduce((sum, item) => sum + Number(item.confidence || 0), 0) / results.length).toFixed(2)
+      );
+
       return res.status(200).json({
         mode,
-        sentiment: absa.overallSentiment,
-        confidence: absa.overallConfidence,
-        aspects: absa.aspects,
-        model: "absa-heuristic",
-        source: "local-absa"
+        batch: true,
+        count: results.length,
+        confidence: averageConfidence,
+        results
       });
     }
 
-    const candidateModels = getCandidateModels(mode, configuredModel);
-
-    let response;
-    let data;
-    let lastErrorText = "";
-    let selectedModel = configuredModel;
-
-    for (const modelId of candidateModels) {
-      const url = `${ROUTER_BASE_URL}/${buildModelPath(modelId)}`;
-      selectedModel = modelId;
-
-      // Attempt with token first, then anonymous (public model path).
-      const extraBody = mode === "emotion" ? { parameters: { top_k: null } } : {};
-      let result = await requestInference(url, text, token, extraBody);
-      response = result.response;
-      data = result.data;
-      lastErrorText = summarizeHfError(response, data);
-
-      const permissionError = isAuthLikeError(response, data);
-
-      // Some token types cannot call provider-routed inference. Retry once
-      // anonymously for public models before failing.
-      if (!response.ok && token && permissionError) {
-        result = await requestInference(url, text, "", extraBody);
-        response = result.response;
-        data = result.data;
-        lastErrorText = summarizeHfError(response, data);
-      }
-
-      if (response.ok) {
-        break;
-      }
-
-      // 404 often means wrong or unavailable model ID. Try next known model.
-      if (response.status === 404) {
-        continue;
-      }
-
-      // For non-404 failures, stop trying model variants.
-      break;
-    }
-
-    if (!response || !response.ok) {
-      if (mode === "emotion") {
-        const fallbackEmotion = emotionFromSentimentFallback(text);
-        return res.status(200).json({
-          mode,
-          emotion: fallbackEmotion.emotion,
-          confidence: fallbackEmotion.confidence,
-          top_emotions: [{ label: fallbackEmotion.emotion, score: Number((fallbackEmotion.confidence / 100).toFixed(4)) }],
-          model: "emotion-fallback",
-          source: "local-fallback",
-          reason: lastErrorText || "No successful response from inference endpoints"
-        });
-      }
-
-      const fallback = localFallbackSentiment(text);
-      return res.status(200).json({
-        mode,
-        sentiment: fallback.sentiment,
-        confidence: fallback.confidence,
-        model: "sentiment-js-fallback",
-        source: "local-fallback",
-        reason: lastErrorText || "No successful response from inference endpoints"
-      });
-    }
-
-    if (mode === "emotion") {
-      const predictions = flattenPredictions(data)
-        .map((item) => ({ label: mapEmotionLabel(item.label), score: Number(item.score || 0) }))
-        .sort((a, b) => b.score - a.score);
-
-      const top = predictions[0] || { label: "Neutral", score: 0 };
-      return res.status(200).json({
-        mode,
-        emotion: top.label,
-        confidence: Number((top.score * 100).toFixed(2)),
-        top_emotions: predictions.slice(0, 5),
-        model: selectedModel,
-        source: "huggingface"
-      });
-    }
-
-    const prediction = bestPrediction(data);
-    const normalized = toAppStyleSentiment(prediction);
-
-    return res.status(200).json({
-      mode,
-      sentiment: normalized.sentiment,
-      confidence: normalized.confidence,
-      model: selectedModel,
-      source: "huggingface"
-    });
+    const singleResult = await analyzeSingleText(text, mode, token, configuredModel);
+    return res.status(200).json(singleResult);
   } catch (error) {
     return res.status(500).json({
       error: "Unexpected server error",
