@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Sentiment Analyzer</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800&display=swap");
+
+      :root {
+        --bg-main: #f7f4ee;
+        --ink: #14213d;
+        --muted: #5e6a80;
+        --panel: rgba(255, 255, 255, 0.85);
+        --line: #d8dfef;
+        --accent: #006d77;
+        --accent-2: #f4a261;
+        --positive: #2b9348;
+        --negative: #ba181b;
+        --neutral: #c77d00;
+        --shadow: 0 20px 50px rgba(20, 33, 61, 0.14);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Outfit", sans-serif;
+        color: var(--ink);
+        background: var(--bg-main);
+        min-height: 100vh;
+        padding: 18px;
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        width: 420px;
+        height: 420px;
+        border-radius: 50%;
+        filter: blur(60px);
+        z-index: -1;
+        opacity: 0.5;
+        animation: floaty 8s ease-in-out infinite;
+      }
+
+      body::before {
+        background: #cfe8ff;
+        top: -130px;
+        right: -90px;
+      }
+
+      body::after {
+        background: #ffe4b8;
+        left: -120px;
+        bottom: -170px;
+        animation-delay: 1.5s;
+      }
+
+      @keyframes floaty {
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-14px);
+        }
+      }
+
+      .container {
+        max-width: 1080px;
+        margin: 0 auto;
+        display: grid;
+        gap: 14px;
+      }
+
+      .hero,
+      .panel {
+        background: var(--panel);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--line);
+        backdrop-filter: blur(6px);
+      }
+
+      .hero {
+        padding: 28px;
+        background: linear-gradient(120deg, #003049 0%, #006d77 55%, #0a9396 100%);
+        color: #fff;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        right: -24px;
+        top: -26px;
+        width: 180px;
+        height: 180px;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.45) 0%, transparent 70%);
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: clamp(1.6rem, 2vw, 2.15rem);
+        letter-spacing: 0.2px;
+      }
+
+      .hero p {
+        margin: 10px 0 12px;
+        color: #d8f8fb;
+      }
+
+      .hero-badges {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .hero-badges span {
+        padding: 6px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 999px;
+        font-size: 13px;
+        background: rgba(255, 255, 255, 0.14);
+      }
+
+      .panel {
+        padding: 22px;
+      }
+
+      label {
+        font-weight: 700;
+      }
+
+      textarea,
+      select,
+      button {
+        width: 100%;
+        border-radius: 14px;
+        border: 1px solid #c9d5ea;
+        font-size: 16px;
+        font-family: inherit;
+      }
+
+      textarea,
+      select {
+        padding: 13px;
+        background: #fff;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      textarea:focus,
+      select:focus {
+        outline: none;
+        border-color: #5ea8ff;
+        box-shadow: 0 0 0 4px rgba(94, 168, 255, 0.16);
+      }
+
+      textarea {
+        min-height: 150px;
+        resize: vertical;
+      }
+
+      button {
+        padding: 13px;
+        background: linear-gradient(135deg, #1d4ed8, #006d77);
+        color: #fff;
+        border: none;
+        font-weight: 800;
+        letter-spacing: 0.2px;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 18px rgba(29, 78, 216, 0.22);
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 16px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .actions button:last-child {
+        background: linear-gradient(135deg, #4b5563, #334155);
+      }
+
+      .details {
+        margin-top: 10px;
+        border: 1px solid #dbe3f3;
+        border-radius: 14px;
+        background: #f8fbff;
+        padding: 10px;
+      }
+
+      .details h4 {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 13px;
+        letter-spacing: 0.2px;
+      }
+
+      .details-body {
+        font-size: 14px;
+        line-height: 1.5;
+        color: #2f3a4f;
+      }
+
+      .details-body ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .result-shell {
+        display: grid;
+        gap: 8px;
+      }
+
+      .sentiment-chip {
+        display: inline-block;
+        width: fit-content;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        background: #eef4ff;
+        color: #355070;
+      }
+
+      .sentiment-chip.positive {
+        background: #d8f3dc;
+        color: #1b4332;
+      }
+
+      .sentiment-chip.negative {
+        background: #ffe3e3;
+        color: #9d0208;
+      }
+
+      .sentiment-chip.neutral {
+        background: #fff4d6;
+        color: #9c6644;
+      }
+
+      .result-title {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0;
+        letter-spacing: 0.2px;
+      }
+
+      .result-value {
+        margin: 10px 0 14px;
+        font-size: 32px;
+        font-weight: 800;
+      }
+
+      .meter {
+        height: 12px;
+        width: 100%;
+        border-radius: 999px;
+        background: #e4eaf6;
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+
+      .meter > span {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, #1d4ed8, #006d77, #0a9396);
+        transition: width 320ms ease;
+      }
+
+      .muted {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      @media (max-width: 860px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        body {
+          padding: 14px;
+        }
+
+        .hero {
+          padding: 22px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <section class="hero">
+        <h1>AI Sentiment Analyzer</h1>
+        <p>Analyze emotions in text with a polished real-time dashboard powered by Vercel API inference.</p>
+        <div class="hero-badges">
+          <span>Positive 😊</span>
+          <span>Negative 😡</span>
+          <span>Neutral 😐</span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <label for="example"><strong>Examples</strong></label>
+          <select id="example">
+            <option value="">Choose an example (down arrow)</option>
+          </select>
+
+          <label for="analysisMode" style="display:block; margin-top:12px;"><strong>Analysis Mode</strong></label>
+          <select id="analysisMode">
+            <option value="sentiment">Sentiment (Positive/Negative/Neutral)</option>
+            <option value="emotion">Emotion Detection (Joy/Anger/Sadness/Fear...)</option>
+            <option value="multilingual">Multilingual Sentiment</option>
+            <option value="absa">Aspect-Based Sentiment (ABSA)</option>
+          </select>
+
+          <label for="text" style="display:block; margin-top:12px;"><strong>Input Text</strong></label>
+          <textarea id="text" placeholder="Type your review, feedback, or message here..."></textarea>
+
+          <div class="actions">
+            <button id="analyzeBtn">Analyze Sentiment</button>
+            <button id="clearBtn" type="button">Clear</button>
+          </div>
+        </div>
+
+        <aside class="panel result-shell">
+          <span class="sentiment-chip" id="sentimentChip">Ready</span>
+          <p class="result-title">Predicted Sentiment</p>
+          <p class="result-value" id="sentiment">Waiting...</p>
+
+          <p class="result-title">Confidence</p>
+          <p id="confidence">0.00%</p>
+
+          <div class="meter"><span id="meter"></span></div>
+          <div class="details">
+            <h4>Detailed Output</h4>
+            <div class="details-body" id="detailsBody">No analysis yet.</div>
+          </div>
+          <p class="muted" id="status">Enter text and click Analyze Sentiment.</p>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const MODE_EXAMPLES = {
+        sentiment: [
+          "I love this product. It works really well and exceeded my expectations.",
+          "The service was okay. Nothing special, but not terrible either.",
+          "This is the worst experience I have had. I want a refund immediately.",
+          "Support responded quickly and solved my issue in minutes.",
+          "Not bad, not great, just average overall.",
+          "The app is clean and easy to use. I found everything quickly.",
+          "Delivery was delayed by two days, but customer support handled it politely.",
+          "I am very disappointed with the quality. It broke on the first day.",
+          "The food tasted fresh and delicious. I will order again.",
+          "It is acceptable for the price, though performance could be better.",
+          "Absolutely fantastic experience from start to finish.",
+          "I feel neutral about this update. It changed a few things but nothing major.",
+          "The product page looked great, but checkout kept failing.",
+          "The interface is confusing and hard to navigate.",
+          "I am thrilled with the results. Highly recommended."
+        ],
+        emotion: [
+          "I am so happy and excited about this promotion!",
+          "I feel scared every time this system crashes.",
+          "I am angry because the order arrived broken again.",
+          "This news makes me very sad and disappointed.",
+          "Wow, I did not expect that at all. What a surprise!",
+          "I am disgusted by how dirty this place is.",
+          "Seeing my family after years filled me with pure joy.",
+          "I am terrified about tomorrow's surgery.",
+          "I cannot believe we won the championship, I am ecstatic.",
+          "I feel calm and emotionally balanced today.",
+          "Their rude behavior made me furious.",
+          "The farewell message left me heartbroken.",
+          "I deeply admire and love what you did for me.",
+          "That sudden loud noise startled me badly.",
+          "The corruption report made everyone angry and upset."
+        ],
+        multilingual: [
+          "Spanish: Me encanta este producto, funciona de maravilla.",
+          "French: Ce service est terrible, je suis très déçu.",
+          "German: Das war in Ordnung, nichts Besonderes.",
+          "Italian: Questo aggiornamento è fantastico e molto utile.",
+          "Portuguese: Este produto é excelente e muito rápido.",
+          "Hindi: यह सेवा बहुत खराब थी और मुझे बिल्कुल पसंद नहीं आई।.",
+          "Dutch: De levering was op tijd en de kwaliteit is prima.",
+          "Turkish: Bu ürün beklediğimden daha iyi çıktı.",
+          "Bengali: এই পরিষেবাটি খুব খারাপ ছিল এবং আমি খুব হতাশ।",
+          "Arabic: الخدمة كانت ممتازة ولم أجد أي مشكلة.",
+          "kannada: ಈ ಸೇವೆ ತುಂಬಾ ಕೆಟ್ಟದು ಮತ್ತು ನನಗೆ ಇದು ಇಷ್ಟವಾಗಲಿಲ್ಲ।",
+          "Japanese: このアプリはとても使いやすいです。",
+          "Korean: 이 서비스는 정말 실망스러웠어요.",
+          "Polish: To była świetna jakość i szybka dostawa.",
+          "Romanian: Aplicația este bună, dar are câteva erori.",
+        ],
+        absa: [
+          "The food was delicious but the service was terrible.",
+          "The app design is beautiful, but checkout keeps failing.",
+          "Delivery was fast, price was high, and quality was average.",
+          "Customer support was excellent, but the product quality is poor.",
+          "The battery life is amazing, though the camera is disappointing.",
+          "I loved the flavor, but the waiter was rude and slow.",
+          "The price is fair, yet shipping took too long.",
+          "Interface looks modern, but performance drops during checkout.",
+          "Build quality feels premium, although customer support is unhelpful.",
+          "The laptop is fast, but the fan noise is unbearable.",
+          "Great display and sound, however the battery drains quickly.",
+          "Delivery was early and packaging was perfect, but setup instructions were confusing.",
+          "The camera quality is excellent, while low-light performance is weak.",
+          "Food quality was average, service was friendly, and prices were expensive.",
+          "The software is intuitive, but security settings are difficult to configure."
+        ]
+      };
+
+      const exampleSelect = document.getElementById("example");
+      const textInput = document.getElementById("text");
+      const modeSelect = document.getElementById("analysisMode");
+      const analyzeBtn = document.getElementById("analyzeBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const sentimentEl = document.getElementById("sentiment");
+      const confidenceEl = document.getElementById("confidence");
+      const meterEl = document.getElementById("meter");
+      const statusEl = document.getElementById("status");
+      const sentimentChipEl = document.getElementById("sentimentChip");
+      const detailsBodyEl = document.getElementById("detailsBody");
+
+      function populateExamples(mode) {
+        const selectedMode = String(mode || "sentiment").toLowerCase();
+        const examples = MODE_EXAMPLES[selectedMode] || MODE_EXAMPLES.sentiment;
+
+        exampleSelect.innerHTML = "";
+
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = `Choose a ${selectedMode} example (down arrow)`;
+        exampleSelect.appendChild(placeholder);
+
+        examples.forEach((text, idx) => {
+          const option = document.createElement("option");
+          option.value = text;
+          option.textContent = `${idx + 1}. ${text}`;
+          exampleSelect.appendChild(option);
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+      }
+
+      function setSentimentChip(sentiment) {
+        const tone = String(sentiment || "ready").toLowerCase();
+        sentimentChipEl.className = "sentiment-chip";
+
+        if (tone.includes("positive")) {
+          sentimentChipEl.classList.add("positive");
+          sentimentChipEl.textContent = "Positive Tone";
+          return;
+        }
+
+        if (tone.includes("negative")) {
+          sentimentChipEl.classList.add("negative");
+          sentimentChipEl.textContent = "Negative Tone";
+          return;
+        }
+
+        if (tone.includes("neutral")) {
+          sentimentChipEl.classList.add("neutral");
+          sentimentChipEl.textContent = "Neutral Tone";
+          return;
+        }
+
+        sentimentChipEl.textContent = "Ready";
+      }
+
+      function renderDetails(data) {
+        const mode = String(data.mode || modeSelect.value || "sentiment");
+
+        if (mode === "emotion") {
+          const top = Array.isArray(data.top_emotions) ? data.top_emotions : [];
+          if (top.length === 0) {
+            detailsBodyEl.textContent = "No emotion breakdown available.";
+            return;
+          }
+
+          const list = top
+            .map((item) => `<li>${escapeHtml(item.label)} - ${(Number(item.score) * 100).toFixed(2)}%</li>`)
+            .join("");
+          detailsBodyEl.innerHTML = `<ul>${list}</ul>`;
+          return;
+        }
+
+        if (mode === "absa") {
+          const aspects = Array.isArray(data.aspects) ? data.aspects : [];
+          if (aspects.length === 0) {
+            detailsBodyEl.textContent = "No specific aspects found in text. Try mentioning areas like food, service, delivery, app, or price.";
+            return;
+          }
+
+          const rows = aspects
+            .map(
+              (item) =>
+                `<li><strong>${escapeHtml(item.aspect)}</strong>: ${escapeHtml(item.sentiment)} (${Number(item.confidence).toFixed(2)}%)<br><span style=\"color:#5f6f85\">${escapeHtml(item.text)}</span></li>`
+            )
+            .join("");
+          detailsBodyEl.innerHTML = `<ul>${rows}</ul>`;
+          return;
+        }
+
+        detailsBodyEl.textContent = "Single-label prediction complete.";
+      }
+
+      populateExamples(modeSelect.value);
+
+      exampleSelect.addEventListener("change", () => {
+        if (exampleSelect.value) {
+          textInput.value = exampleSelect.value;
+        }
+      });
+
+      modeSelect.addEventListener("change", () => {
+        populateExamples(modeSelect.value);
+        textInput.value = "";
+        detailsBodyEl.textContent = `Examples updated for ${modeSelect.options[modeSelect.selectedIndex].text}.`;
+        statusEl.textContent = "Select an example or enter your own text.";
+      });
+
+      clearBtn.addEventListener("click", () => {
+        textInput.value = "";
+        exampleSelect.value = "";
+        sentimentEl.textContent = "Waiting...";
+        setSentimentChip("ready");
+        confidenceEl.textContent = "0.00%";
+        meterEl.style.width = "0%";
+        detailsBodyEl.textContent = "No analysis yet.";
+        statusEl.textContent = "Enter text and click Analyze Sentiment.";
+      });
+
+      analyzeBtn.addEventListener("click", async () => {
+        const text = textInput.value.trim();
+
+        if (!text) {
+          statusEl.textContent = "Please enter text first.";
+          return;
+        }
+
+        analyzeBtn.disabled = true;
+        analyzeBtn.textContent = "Analyzing...";
+        statusEl.textContent = "Contacting model...";
+
+        const mode = modeSelect.value;
+
+        try {
+          const response = await fetch("/api/sentiment", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ text, mode })
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.error || "Request failed");
+          }
+
+          const emojiMap = {
+            Positive: "😊",
+            Negative: "😡",
+            Neutral: "😐",
+            Joy: "😄",
+            Anger: "😠",
+            Sadness: "😢",
+            Fear: "😨",
+            Surprise: "😲",
+            Disgust: "🤢",
+            Love: "😍"
+          };
+
+          if (mode === "emotion") {
+            sentimentEl.textContent = `${emojiMap[data.emotion] || "🙂"} ${data.emotion || "Neutral"}`;
+            setSentimentChip(data.emotion || "Neutral");
+            confidenceEl.textContent = `${Number(data.confidence || 0).toFixed(2)}%`;
+            meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence || 0)))}%`;
+          } else {
+            sentimentEl.textContent = `${emojiMap[data.sentiment] || "🙂"} ${data.sentiment}`;
+            setSentimentChip(data.sentiment);
+            confidenceEl.textContent = `${Number(data.confidence).toFixed(2)}%`;
+            meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence)))}%`;
+          }
+
+          renderDetails(data);
+          const sourceNote = data.source === "local-fallback" ? " (fallback mode)" : "";
+          if (data.source === "local-fallback" && data.reason) {
+            statusEl.textContent = `Model: ${data.model}${sourceNote} | Reason: ${data.reason}`;
+          } else {
+            statusEl.textContent = data.warning
+              ? `${data.warning} | Model: ${data.model}${sourceNote}`
+              : `Model: ${data.model}${sourceNote}`;
+          }
+        } catch (error) {
+          statusEl.textContent = error.message;
+        } finally {
+          analyzeBtn.disabled = false;
+          analyzeBtn.textContent = "Analyze Sentiment";
+        }
+      });
+    </script>
+  </body>
+</html>
