@@ -5,16 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Sentiment Analyzer</title>
     <style>
-      @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
+      @import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800&display=swap");
 
       :root {
-        --bg-1: #f5f7ff;
-        --bg-2: #e8fff8;
-        --panel: #ffffff;
-        --text: #102a43;
-        --muted: #5a6f8c;
-        --accent: #0f766e;
-        --shadow: 0 18px 45px rgba(16, 42, 67, 0.12);
+        --bg-main: #f7f4ee;
+        --ink: #14213d;
+        --muted: #5e6a80;
+        --panel: rgba(255, 255, 255, 0.85);
+        --line: #d8dfef;
+        --accent: #006d77;
+        --accent-2: #f4a261;
+        --positive: #2b9348;
+        --negative: #ba181b;
+        --neutral: #c77d00;
+        --shadow: 0 20px 50px rgba(20, 33, 61, 0.14);
       }
 
       * {
@@ -23,78 +27,161 @@
 
       body {
         margin: 0;
-        font-family: "Space Grotesk", sans-serif;
-        color: var(--text);
-        background:
-          radial-gradient(circle at 10% 20%, #dbeafe 0%, transparent 40%),
-          radial-gradient(circle at 90% 10%, #fef3c7 0%, transparent 35%),
-          linear-gradient(135deg, var(--bg-1), var(--bg-2));
+        font-family: "Outfit", sans-serif;
+        color: var(--ink);
+        background: var(--bg-main);
         min-height: 100vh;
-        padding: 20px;
+        padding: 18px;
+        position: relative;
+        overflow-x: hidden;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        width: 420px;
+        height: 420px;
+        border-radius: 50%;
+        filter: blur(60px);
+        z-index: -1;
+        opacity: 0.5;
+        animation: floaty 8s ease-in-out infinite;
+      }
+
+      body::before {
+        background: #cfe8ff;
+        top: -130px;
+        right: -90px;
+      }
+
+      body::after {
+        background: #ffe4b8;
+        left: -120px;
+        bottom: -170px;
+        animation-delay: 1.5s;
+      }
+
+      @keyframes floaty {
+        0%,
+        100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-14px);
+        }
       }
 
       .container {
-        max-width: 1000px;
+        max-width: 1080px;
         margin: 0 auto;
         display: grid;
-        gap: 16px;
+        gap: 14px;
       }
 
       .hero,
       .panel {
         background: var(--panel);
-        border-radius: 20px;
+        border-radius: 24px;
         box-shadow: var(--shadow);
-        border: 1px solid #dde7f2;
+        border: 1px solid var(--line);
+        backdrop-filter: blur(6px);
       }
 
       .hero {
-        padding: 24px;
-        background: linear-gradient(135deg, #052e2b, #0f766e 60%, #14b8a6);
+        padding: 28px;
+        background: linear-gradient(120deg, #003049 0%, #006d77 55%, #0a9396 100%);
         color: #fff;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        right: -24px;
+        top: -26px;
+        width: 180px;
+        height: 180px;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.45) 0%, transparent 70%);
       }
 
       .hero h1 {
         margin: 0;
+        font-size: clamp(1.6rem, 2vw, 2.15rem);
+        letter-spacing: 0.2px;
       }
 
       .hero p {
-        margin: 10px 0 0;
-        color: #d1fae5;
+        margin: 10px 0 12px;
+        color: #d8f8fb;
+      }
+
+      .hero-badges {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .hero-badges span {
+        padding: 6px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 999px;
+        font-size: 13px;
+        background: rgba(255, 255, 255, 0.14);
       }
 
       .panel {
-        padding: 20px;
+        padding: 22px;
+      }
+
+      label {
+        font-weight: 700;
       }
 
       textarea,
       select,
       button {
         width: 100%;
-        border-radius: 12px;
-        border: 1px solid #c8d5e5;
+        border-radius: 14px;
+        border: 1px solid #c9d5ea;
         font-size: 16px;
         font-family: inherit;
       }
 
       textarea,
       select {
-        padding: 12px;
+        padding: 13px;
         background: #fff;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      textarea:focus,
+      select:focus {
+        outline: none;
+        border-color: #5ea8ff;
+        box-shadow: 0 0 0 4px rgba(94, 168, 255, 0.16);
       }
 
       textarea {
-        min-height: 130px;
+        min-height: 150px;
         resize: vertical;
       }
 
       button {
-        padding: 12px;
-        background: linear-gradient(135deg, #0ea5e9, #0f766e);
+        padding: 13px;
+        background: linear-gradient(135deg, #1d4ed8, #006d77);
         color: #fff;
         border: none;
-        font-weight: 700;
+        font-weight: 800;
+        letter-spacing: 0.2px;
         cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.2s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 18px rgba(29, 78, 216, 0.22);
       }
 
       button:disabled {
@@ -111,44 +198,80 @@
       .actions {
         display: flex;
         gap: 10px;
-        margin-top: 12px;
+        margin-top: 14px;
       }
 
       .actions button:last-child {
-        background: #334155;
+        background: linear-gradient(135deg, #4b5563, #334155);
+      }
+
+      .result-shell {
+        display: grid;
+        gap: 8px;
+      }
+
+      .sentiment-chip {
+        display: inline-block;
+        width: fit-content;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+        background: #eef4ff;
+        color: #355070;
+      }
+
+      .sentiment-chip.positive {
+        background: #d8f3dc;
+        color: #1b4332;
+      }
+
+      .sentiment-chip.negative {
+        background: #ffe3e3;
+        color: #9d0208;
+      }
+
+      .sentiment-chip.neutral {
+        background: #fff4d6;
+        color: #9c6644;
       }
 
       .result-title {
         color: var(--muted);
         font-size: 14px;
         margin: 0;
+        letter-spacing: 0.2px;
       }
 
       .result-value {
-        margin: 6px 0 12px;
-        font-size: 28px;
-        font-weight: 700;
+        margin: 10px 0 14px;
+        font-size: 32px;
+        font-weight: 800;
       }
 
       .meter {
-        height: 10px;
+        height: 12px;
         width: 100%;
         border-radius: 999px;
-        background: #e2e8f0;
+        background: #e4eaf6;
         overflow: hidden;
+        margin-bottom: 6px;
       }
 
       .meter > span {
         display: block;
         height: 100%;
         width: 0;
-        background: linear-gradient(90deg, #0ea5e9, #0f766e);
-        transition: width 250ms ease;
+        background: linear-gradient(90deg, #1d4ed8, #006d77, #0a9396);
+        transition: width 320ms ease;
       }
 
       .muted {
         margin-top: 10px;
         color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
       }
 
       @media (max-width: 860px) {
@@ -159,6 +282,10 @@
         body {
           padding: 14px;
         }
+
+        .hero {
+          padding: 22px;
+        }
       }
     </style>
   </head>
@@ -166,7 +293,12 @@
     <main class="container">
       <section class="hero">
         <h1>AI Sentiment Analyzer</h1>
-        <p>Vercel-ready sentiment app powered by Hugging Face Inference API.</p>
+        <p>Analyze emotions in text with a polished real-time dashboard powered by Vercel API inference.</p>
+        <div class="hero-badges">
+          <span>Positive 😊</span>
+          <span>Negative 😡</span>
+          <span>Neutral 😐</span>
+        </div>
       </section>
 
       <section class="grid">
@@ -185,7 +317,8 @@
           </div>
         </div>
 
-        <aside class="panel">
+        <aside class="panel result-shell">
+          <span class="sentiment-chip" id="sentimentChip">Ready</span>
           <p class="result-title">Predicted Sentiment</p>
           <p class="result-value" id="sentiment">Waiting...</p>
 
@@ -225,6 +358,32 @@
       const confidenceEl = document.getElementById("confidence");
       const meterEl = document.getElementById("meter");
       const statusEl = document.getElementById("status");
+      const sentimentChipEl = document.getElementById("sentimentChip");
+
+      function setSentimentChip(sentiment) {
+        const tone = String(sentiment || "ready").toLowerCase();
+        sentimentChipEl.className = "sentiment-chip";
+
+        if (tone.includes("positive")) {
+          sentimentChipEl.classList.add("positive");
+          sentimentChipEl.textContent = "Positive Tone";
+          return;
+        }
+
+        if (tone.includes("negative")) {
+          sentimentChipEl.classList.add("negative");
+          sentimentChipEl.textContent = "Negative Tone";
+          return;
+        }
+
+        if (tone.includes("neutral")) {
+          sentimentChipEl.classList.add("neutral");
+          sentimentChipEl.textContent = "Neutral Tone";
+          return;
+        }
+
+        sentimentChipEl.textContent = "Ready";
+      }
 
       EXAMPLES.forEach((text, idx) => {
         const option = document.createElement("option");
@@ -243,6 +402,7 @@
         textInput.value = "";
         exampleSelect.value = "";
         sentimentEl.textContent = "Waiting...";
+        setSentimentChip("ready");
         confidenceEl.textContent = "0.00%";
         meterEl.style.width = "0%";
         statusEl.textContent = "Enter text and click Analyze Sentiment.";
@@ -282,6 +442,7 @@
           };
 
           sentimentEl.textContent = `${emojiMap[data.sentiment] || "🙂"} ${data.sentiment}`;
+          setSentimentChip(data.sentiment);
           confidenceEl.textContent = `${Number(data.confidence).toFixed(2)}%`;
           meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence)))}%`;
           const sourceNote = data.source === "local-fallback" ? " (fallback mode)" : "";
