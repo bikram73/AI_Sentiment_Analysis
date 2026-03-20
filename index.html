@@ -267,30 +267,6 @@
         transition: width 320ms ease;
       }
 
-      .trend-wrap {
-        margin-top: 8px;
-        border: 1px solid #dbe3f3;
-        border-radius: 14px;
-        background: #f8fbff;
-        padding: 10px;
-      }
-
-      .trend-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        font-size: 12px;
-        color: var(--muted);
-        margin-bottom: 6px;
-      }
-
-      #trendCanvas {
-        width: 100%;
-        height: 84px;
-        display: block;
-        border-radius: 10px;
-      }
-
       .muted {
         margin-top: 10px;
         color: var(--muted);
@@ -350,15 +326,6 @@
           <p id="confidence">0.00%</p>
 
           <div class="meter"><span id="meter"></span></div>
-
-          <div class="trend-wrap">
-            <div class="trend-head">
-              <span>Confidence Trend</span>
-              <span id="trendMeta">Last 0 runs</span>
-            </div>
-            <canvas id="trendCanvas" width="320" height="84"></canvas>
-          </div>
-
           <p class="muted" id="status">Enter text and click Analyze Sentiment.</p>
         </aside>
       </section>
@@ -392,70 +359,6 @@
       const meterEl = document.getElementById("meter");
       const statusEl = document.getElementById("status");
       const sentimentChipEl = document.getElementById("sentimentChip");
-      const trendCanvas = document.getElementById("trendCanvas");
-      const trendMetaEl = document.getElementById("trendMeta");
-      const trendCtx = trendCanvas.getContext("2d");
-      const confidenceHistory = [];
-      const MAX_TREND_POINTS = 20;
-
-      function drawTrend() {
-        const w = trendCanvas.width;
-        const h = trendCanvas.height;
-
-        trendCtx.clearRect(0, 0, w, h);
-
-        // Subtle horizontal guides.
-        trendCtx.strokeStyle = "#e6edf8";
-        trendCtx.lineWidth = 1;
-        [0.25, 0.5, 0.75].forEach((r) => {
-          const y = h * r;
-          trendCtx.beginPath();
-          trendCtx.moveTo(0, y);
-          trendCtx.lineTo(w, y);
-          trendCtx.stroke();
-        });
-
-        if (confidenceHistory.length === 0) {
-          trendCtx.fillStyle = "#8a97ad";
-          trendCtx.font = "12px Outfit";
-          trendCtx.fillText("No trend yet", 10, h / 2);
-          trendMetaEl.textContent = "Last 0 runs";
-          return;
-        }
-
-        const points = confidenceHistory.slice(-MAX_TREND_POINTS);
-        trendMetaEl.textContent = `Last ${points.length} run${points.length > 1 ? "s" : ""}`;
-
-        const stepX = points.length > 1 ? w / (points.length - 1) : 0;
-        const yFrom = (value) => h - (Math.max(0, Math.min(100, value)) / 100) * h;
-
-        const grad = trendCtx.createLinearGradient(0, 0, w, 0);
-        grad.addColorStop(0, "#1d4ed8");
-        grad.addColorStop(1, "#0a9396");
-
-        trendCtx.beginPath();
-        points.forEach((value, i) => {
-          const x = i * stepX;
-          const y = yFrom(value);
-          if (i === 0) {
-            trendCtx.moveTo(x, y);
-          } else {
-            trendCtx.lineTo(x, y);
-          }
-        });
-        trendCtx.strokeStyle = grad;
-        trendCtx.lineWidth = 3;
-        trendCtx.lineCap = "round";
-        trendCtx.stroke();
-
-        const lastValue = points[points.length - 1];
-        const lx = (points.length - 1) * stepX;
-        const ly = yFrom(lastValue);
-        trendCtx.beginPath();
-        trendCtx.arc(lx, ly, 4, 0, Math.PI * 2);
-        trendCtx.fillStyle = "#006d77";
-        trendCtx.fill();
-      }
 
       function setSentimentChip(sentiment) {
         const tone = String(sentiment || "ready").toLowerCase();
@@ -502,8 +405,6 @@
         setSentimentChip("ready");
         confidenceEl.textContent = "0.00%";
         meterEl.style.width = "0%";
-        confidenceHistory.length = 0;
-        drawTrend();
         statusEl.textContent = "Enter text and click Analyze Sentiment.";
       });
 
@@ -542,14 +443,8 @@
 
           sentimentEl.textContent = `${emojiMap[data.sentiment] || "🙂"} ${data.sentiment}`;
           setSentimentChip(data.sentiment);
-          const confidenceValue = Math.max(0, Math.min(100, Number(data.confidence)));
-          confidenceEl.textContent = `${confidenceValue.toFixed(2)}%`;
-          meterEl.style.width = `${confidenceValue}%`;
-          confidenceHistory.push(confidenceValue);
-          if (confidenceHistory.length > MAX_TREND_POINTS) {
-            confidenceHistory.shift();
-          }
-          drawTrend();
+          confidenceEl.textContent = `${Number(data.confidence).toFixed(2)}%`;
+          meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence)))}%`;
           const sourceNote = data.source === "local-fallback" ? " (fallback mode)" : "";
           if (data.source === "local-fallback" && data.reason) {
             statusEl.textContent = `Model: ${data.model}${sourceNote} | Reason: ${data.reason}`;
@@ -565,8 +460,6 @@
           analyzeBtn.textContent = "Analyze Sentiment";
         }
       });
-
-      drawTrend();
     </script>
   </body>
 </html>
