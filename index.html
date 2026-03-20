@@ -370,23 +370,36 @@
     </main>
 
     <script>
-      const EXAMPLES = [
-        "I love this product. It works really well and exceeded my expectations.",
-        "The service was okay. Nothing special, but not terrible either.",
-        "This is the worst experience I have had. I want a refund immediately.",
-        "Support responded quickly and solved my issue in minutes.",
-        "Not bad, not great, just average overall.",
-        "Absolutely fantastic experience from start to finish.",
-        "The app is clean and easy to use. I found everything quickly.",
-        "Delivery was delayed by two days, but customer support handled it politely.",
-        "I am very disappointed with the quality. It broke on the first day.",
-        "The food tasted fresh and delicious. I will order again.",
-        "It is acceptable for the price, though performance could be better.",
-        "I feel neutral about this update. It changed a few things but nothing major.",
-        "The product page looked great, but checkout kept failing.",
-        "The interface is confusing and hard to navigate.",
-        "I am thrilled with the results. Highly recommended."
-      ];
+      const MODE_EXAMPLES = {
+        sentiment: [
+          "I love this product. It works really well and exceeded my expectations.",
+          "The service was okay. Nothing special, but not terrible either.",
+          "This is the worst experience I have had. I want a refund immediately.",
+          "Support responded quickly and solved my issue in minutes.",
+          "Not bad, not great, just average overall."
+        ],
+        emotion: [
+          "I am so happy and excited about this promotion!",
+          "I feel scared every time this system crashes.",
+          "I am angry because the order arrived broken again.",
+          "This news makes me very sad and disappointed.",
+          "Wow, I did not expect that at all. What a surprise!"
+        ],
+        multilingual: [
+          "Me encanta este producto, funciona de maravilla.",
+          "Ce service est terrible, je suis tres decu.",
+          "Das war in Ordnung, nichts Besonderes.",
+          "Questo aggiornamento e fantastico e molto utile.",
+          "Este envio llego tarde pero el soporte fue amable."
+        ],
+        absa: [
+          "The food was delicious but the service was terrible.",
+          "The app design is beautiful, but checkout keeps failing.",
+          "Delivery was fast, price was high, and quality was average.",
+          "Customer support was excellent, but the product quality is poor.",
+          "The battery life is amazing, though the camera is disappointing."
+        ]
+      };
 
       const exampleSelect = document.getElementById("example");
       const textInput = document.getElementById("text");
@@ -399,6 +412,25 @@
       const statusEl = document.getElementById("status");
       const sentimentChipEl = document.getElementById("sentimentChip");
       const detailsBodyEl = document.getElementById("detailsBody");
+
+      function populateExamples(mode) {
+        const selectedMode = String(mode || "sentiment").toLowerCase();
+        const examples = MODE_EXAMPLES[selectedMode] || MODE_EXAMPLES.sentiment;
+
+        exampleSelect.innerHTML = "";
+
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = `Choose a ${selectedMode} example (down arrow)`;
+        exampleSelect.appendChild(placeholder);
+
+        examples.forEach((text, idx) => {
+          const option = document.createElement("option");
+          option.value = text;
+          option.textContent = `${idx + 1}. ${text}`;
+          exampleSelect.appendChild(option);
+        });
+      }
 
       function escapeHtml(value) {
         return String(value)
@@ -469,17 +501,19 @@
         detailsBodyEl.textContent = "Single-label prediction complete.";
       }
 
-      EXAMPLES.forEach((text, idx) => {
-        const option = document.createElement("option");
-        option.value = text;
-        option.textContent = `${idx + 1}. ${text}`;
-        exampleSelect.appendChild(option);
-      });
+      populateExamples(modeSelect.value);
 
       exampleSelect.addEventListener("change", () => {
         if (exampleSelect.value) {
           textInput.value = exampleSelect.value;
         }
+      });
+
+      modeSelect.addEventListener("change", () => {
+        populateExamples(modeSelect.value);
+        textInput.value = "";
+        detailsBodyEl.textContent = `Examples updated for ${modeSelect.options[modeSelect.selectedIndex].text}.`;
+        statusEl.textContent = "Select an example or enter your own text.";
       });
 
       clearBtn.addEventListener("click", () => {
