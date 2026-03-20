@@ -12,16 +12,8 @@
       "dest": "/api/sentiment.js"
     },
     {
-      "src": "/Sentiment_Analysis.html",
-      "dest": "/Sentiment_Analysis.html"
-    },
-    {
-      "src": "/index.html",
-      "dest": "/index.html"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/"
+      "src": "^/(?!api).*",
+      "dest": "$0"
     }
   ]
 }
