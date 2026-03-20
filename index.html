@@ -446,9 +446,13 @@
           confidenceEl.textContent = `${Number(data.confidence).toFixed(2)}%`;
           meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence)))}%`;
           const sourceNote = data.source === "local-fallback" ? " (fallback mode)" : "";
-          statusEl.textContent = data.warning
-            ? `${data.warning} | Model: ${data.model}${sourceNote}`
-            : `Model: ${data.model}${sourceNote}`;
+          if (data.source === "local-fallback" && data.reason) {
+            statusEl.textContent = `Model: ${data.model}${sourceNote} | Reason: ${data.reason}`;
+          } else {
+            statusEl.textContent = data.warning
+              ? `${data.warning} | Model: ${data.model}${sourceNote}`
+              : `Model: ${data.model}${sourceNote}`;
+          }
         } catch (error) {
           statusEl.textContent = error.message;
         } finally {
