@@ -253,6 +253,12 @@
         border-radius: 6px;
       }
 
+      .kw-neutral {
+        background: rgba(245, 158, 11, 0.2);
+        color: transparent;
+        border-radius: 6px;
+      }
+
       button {
         padding: 13px;
         background: linear-gradient(135deg, #1d4ed8, #006d77);
@@ -563,13 +569,55 @@
 
       const POSITIVE_KEYWORDS = [
         "love", "great", "excellent", "amazing", "fantastic", "helpful", "clean", "fast", "good",
-        "best", "thrilled", "recommended", "delicious", "easy", "smooth", "nice", "awesome"
+        "best", "thrilled", "recommended", "delicious", "easy", "smooth", "nice", "awesome",
+        "perfect", "wonderful", "brilliant", "outstanding", "superb", "impressive",
+        "satisfied", "happy", "pleased", "enjoyed", "enjoyable",
+        "reliable", "efficient", "quick", "responsive",
+        "user-friendly", "intuitive", "seamless", "flawless",
+        "affordable", "worth", "value", "reasonable",
+        "fresh", "tasty", "quality", "premium",
+        "supportive", "polite", "kind", "professional",
+        "loved", "likes", "liking", "perfectly", "works well",
+        "highly recommended", "five stars", "top notch",
+        "exceptional", "stable", "secure", "accurate", "powerful",
+        "satisfying", "well-made", "pleasant", "trustworthy"
       ];
 
       const NEGATIVE_KEYWORDS = [
         "worst", "bad", "terrible", "disappointed", "confusing", "broken", "broke", "failing", "failed",
-        "slow", "angry", "sad", "poor", "rude", "delay", "delayed", "issue", "refund"
+        "slow", "angry", "sad", "poor", "rude", "delay", "delayed", "issue", "refund",
+        "awful", "horrible", "useless", "pathetic", "annoying", "frustrating",
+        "disappointing", "hate", "hated", "dislike",
+        "bug", "bugs", "glitch", "crash", "crashed", "error", "errors",
+        "lag", "laggy", "unresponsive", "freezing",
+        "overpriced", "waste", "waste of money", "not worth",
+        "cheap quality", "low quality", "defective",
+        "late", "missed", "cancelled", "canceled",
+        "problem", "problems", "complaint", "complaints",
+        "difficult", "hard to use", "complex",
+        "unhappy", "unsatisfied", "poor service",
+        "never again", "very bad", "extremely bad",
+        "inaccurate", "unstable", "unreliable", "misleading", "damaged"
       ];
+
+      const NEUTRAL_KEYWORDS = [
+        "okay", "ok", "average", "fine", "normal", "decent",
+        "not bad", "not great", "acceptable", "fair",
+        "moderate", "so-so", "nothing special",
+        "could be better", "as expected", "typical",
+        "standard", "alright",
+        "mixed", "balanced", "neither good nor bad", "passable", "regular"
+      ];
+
+      const KEYWORD_CATEGORY = new Map();
+      NEUTRAL_KEYWORDS.forEach((term) => KEYWORD_CATEGORY.set(term.toLowerCase(), "neutral"));
+      POSITIVE_KEYWORDS.forEach((term) => KEYWORD_CATEGORY.set(term.toLowerCase(), "positive"));
+      NEGATIVE_KEYWORDS.forEach((term) => KEYWORD_CATEGORY.set(term.toLowerCase(), "negative"));
+
+      const KEYWORD_REGEX = new RegExp(
+        `\\b(${[...KEYWORD_CATEGORY.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp).join("|")})\\b`,
+        "gi"
+      );
 
       function populateExamples(mode) {
         const selectedMode = String(mode || "sentiment").toLowerCase();
@@ -605,11 +653,19 @@
         const raw = String(text || "");
         let html = escapeHtml(raw);
 
-        const positivePattern = new RegExp(`\\b(${POSITIVE_KEYWORDS.map(escapeRegExp).join("|")})\\b`, "gi");
-        const negativePattern = new RegExp(`\\b(${NEGATIVE_KEYWORDS.map(escapeRegExp).join("|")})\\b`, "gi");
-
-        html = html.replace(positivePattern, '<span class="kw-positive">$1</span>');
-        html = html.replace(negativePattern, '<span class="kw-negative">$1</span>');
+        html = html.replace(KEYWORD_REGEX, (matched) => {
+          const category = KEYWORD_CATEGORY.get(String(matched).toLowerCase());
+          if (category === "positive") {
+            return `<span class="kw-positive">${matched}</span>`;
+          }
+          if (category === "negative") {
+            return `<span class="kw-negative">${matched}</span>`;
+          }
+          if (category === "neutral") {
+            return `<span class="kw-neutral">${matched}</span>`;
+          }
+          return matched;
+        });
 
         // Preserve visual height for empty content so caret alignment stays stable.
         textBackdropEl.innerHTML = html || "\u200b";
