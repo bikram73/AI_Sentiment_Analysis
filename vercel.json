@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "public": true,
   "builds": [
     {
       "src": "api/sentiment.js",
@@ -9,20 +8,15 @@
   ],
   "routes": [
     {
-      "src": "^/api/(.*)$",
-      "dest": "api/$1"
-    },
-    {
-      "src": "^/Sentiment_Analysis.html$",
-      "dest": "/Sentiment_Analysis.html"
-    },
-    {
-      "src": "^/index.html$",
-      "dest": "/index.html"
-    },
-    {
-      "src": "^/(.*)$",
-      "dest": "/index.html"
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
     }
-  ]
+  ],
+  "env": {
+    "HF_TOKEN": "@HF_TOKEN",
+    "HF_MODEL": "@HF_MODEL",
+    "HF_MODEL_MULTILINGUAL": "@HF_MODEL_MULTILINGUAL",
+    "HF_MODEL_EMOTION": "@HF_MODEL_EMOTION",
+    "NEUTRAL_THRESHOLD": "@NEUTRAL_THRESHOLD"
+  }
 }
