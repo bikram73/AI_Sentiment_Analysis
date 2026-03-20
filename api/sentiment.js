@@ -53,6 +53,41 @@ async function requestInference(url, text, token) {
   return { response, data };
 }
 
+function cleanToken(tokenValue) {
+  let token = String(tokenValue || "").trim();
+  if (token.toLowerCase().startsWith("bearer ")) {
+    token = token.slice(7).trim();
+  }
+  if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+    token = token.slice(1, -1).trim();
+  }
+  return token;
+}
+
+function summarizeHfError(response, data) {
+  const status = response?.status || 0;
+  const rawError = String(data?.error || "");
+  const lower = rawError.toLowerCase();
+
+  if (status === 401 || lower.includes("unauthorized") || lower.includes("credentials")) {
+    return "Unauthorized (401) from Hugging Face Router. Check HUGGINGFACE_API_TOKEN value, scope, and environment.";
+  }
+
+  if (status === 403 || lower.includes("insufficient permissions")) {
+    return "Forbidden (403) from Hugging Face Router. Token exists but lacks required permissions.";
+  }
+
+  if (lower.includes("rate limit") || status === 429) {
+    return "Rate limited by Hugging Face Router (429). Try again later or use a higher quota token.";
+  }
+
+  if (lower.includes("<!doctype html") || lower.includes("<html")) {
+    return `HTTP ${status}: Received HTML error page from Hugging Face Router.`;
+  }
+
+  return `HTTP ${status}: ${rawError || "Unknown inference error"}`;
+}
+
 function buildModelPath(modelId) {
   // Keep namespace/model path shape expected by router APIs.
   return String(modelId || "")
@@ -223,7 +258,9 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: "Text is required" });
     }
 
-    const token = process.env.HUGGINGFACE_API_TOKEN || "";
+    const token = cleanToken(
+      process.env.HUGGINGFACE_API_TOKEN || process.env.HF_TOKEN || process.env.HUGGINGFACEHUB_API_TOKEN || ""
+    );
 
     const encodedModel = buildModelPath(DEFAULT_MODEL);
     const candidateUrls = [`${ROUTER_BASE_URL}/${encodedModel}`];
@@ -237,7 +274,7 @@ module.exports = async function handler(req, res) {
       let result = await requestInference(url, text, token);
       response = result.response;
       data = result.data;
-      lastErrorText = `HTTP ${response.status}: ${String(data?.error || "Unknown error")}`;
+      lastErrorText = summarizeHfError(response, data);
 
       const permissionError = isAuthLikeError(response, data);
 
@@ -247,7 +284,7 @@ module.exports = async function handler(req, res) {
         result = await requestInference(url, text, "");
         response = result.response;
         data = result.data;
-        lastErrorText = `HTTP ${response.status}: ${String(data?.error || "Unknown error")}`;
+        lastErrorText = summarizeHfError(response, data);
       }
 
       if (response.ok) {
