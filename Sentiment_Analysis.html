@@ -191,6 +191,54 @@
         resize: vertical;
       }
 
+      .keyword-highlight-shell {
+        margin-top: 10px;
+        border: 1px solid #dbe3f3;
+        border-radius: 14px;
+        background: #f8fbff;
+        padding: 10px;
+      }
+
+      .keyword-highlight-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .keyword-preview {
+        min-height: 74px;
+        max-height: 180px;
+        overflow: auto;
+        border: 1px solid #d6e1f3;
+        background: #fff;
+        border-radius: 10px;
+        padding: 10px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #2f3a4f;
+        font-size: 14px;
+      }
+
+      .kw-positive {
+        background: rgba(43, 147, 72, 0.16);
+        color: #1b4332;
+        border-radius: 6px;
+        padding: 0 3px;
+        font-weight: 700;
+      }
+
+      .kw-negative {
+        background: rgba(186, 24, 27, 0.13);
+        color: #7f1d1d;
+        border-radius: 6px;
+        padding: 0 3px;
+        font-weight: 700;
+      }
+
       button {
         padding: 13px;
         background: linear-gradient(135deg, #1d4ed8, #006d77);
@@ -370,6 +418,14 @@
           <label for="text" style="display:block; margin-top:12px;"><strong>Input Text</strong></label>
           <textarea id="text" placeholder="Type your review, feedback, or message here..."></textarea>
 
+          <div class="keyword-highlight-shell">
+            <div class="keyword-highlight-head">
+              <span><strong>Keyword Highlighting</strong> (live)</span>
+              <span>Green = positive, Red = negative</span>
+            </div>
+            <div class="keyword-preview" id="keywordPreview">Your highlighted text will appear here as you type.</div>
+          </div>
+
           <div class="actions">
             <button id="analyzeBtn">Analyze Sentiment</button>
             <button id="clearBtn" type="button">Clear</button>
@@ -494,6 +550,17 @@
       const statusEl = document.getElementById("status");
       const sentimentChipEl = document.getElementById("sentimentChip");
       const detailsBodyEl = document.getElementById("detailsBody");
+      const keywordPreviewEl = document.getElementById("keywordPreview");
+
+      const POSITIVE_KEYWORDS = [
+        "love", "great", "excellent", "amazing", "fantastic", "helpful", "clean", "fast", "good",
+        "best", "thrilled", "recommended", "delicious", "easy", "smooth", "nice", "awesome"
+      ];
+
+      const NEGATIVE_KEYWORDS = [
+        "worst", "bad", "terrible", "disappointed", "confusing", "broken", "broke", "failing", "failed",
+        "slow", "angry", "sad", "poor", "rude", "delay", "delayed", "issue", "refund"
+      ];
 
       function populateExamples(mode) {
         const selectedMode = String(mode || "sentiment").toLowerCase();
@@ -519,6 +586,28 @@
           .replaceAll("&", "&amp;")
           .replaceAll("<", "&lt;")
           .replaceAll(">", "&gt;");
+      }
+
+      function escapeRegExp(value) {
+        return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      function renderKeywordHighlights(text) {
+        const raw = String(text || "");
+        if (!raw.trim()) {
+          keywordPreviewEl.textContent = "Your highlighted text will appear here as you type.";
+          return;
+        }
+
+        let html = escapeHtml(raw);
+
+        const positivePattern = new RegExp(`\\b(${POSITIVE_KEYWORDS.map(escapeRegExp).join("|")})\\b`, "gi");
+        const negativePattern = new RegExp(`\\b(${NEGATIVE_KEYWORDS.map(escapeRegExp).join("|")})\\b`, "gi");
+
+        html = html.replace(positivePattern, '<span class="kw-positive">$1</span>');
+        html = html.replace(negativePattern, '<span class="kw-negative">$1</span>');
+
+        keywordPreviewEl.innerHTML = html;
       }
 
       function setSentimentChip(sentiment) {
@@ -605,6 +694,7 @@
       exampleSelect.addEventListener("change", () => {
         if (exampleSelect.value) {
           textInput.value = exampleSelect.value;
+          renderKeywordHighlights(textInput.value);
         }
       });
 
@@ -618,6 +708,11 @@
         analyzeBtn.textContent = isBatchMode ? "Analyze Batch" : "Analyze Sentiment";
         detailsBodyEl.textContent = `Examples updated for ${modeSelect.options[modeSelect.selectedIndex].text}.`;
         statusEl.textContent = "Select an example or enter your own text.";
+        renderKeywordHighlights(textInput.value);
+      });
+
+      textInput.addEventListener("input", () => {
+        renderKeywordHighlights(textInput.value);
       });
 
       clearBtn.addEventListener("click", () => {
@@ -631,7 +726,10 @@
         statusEl.textContent = modeSelect.value === "batch"
           ? "Enter multiple lines and click Analyze Batch."
           : "Enter text and click Analyze Sentiment.";
+        renderKeywordHighlights("");
       });
+
+      renderKeywordHighlights("");
 
       analyzeBtn.addEventListener("click", async () => {
         const text = textInput.value.trim();
