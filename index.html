@@ -205,6 +205,32 @@
         background: linear-gradient(135deg, #4b5563, #334155);
       }
 
+      .details {
+        margin-top: 10px;
+        border: 1px solid #dbe3f3;
+        border-radius: 14px;
+        background: #f8fbff;
+        padding: 10px;
+      }
+
+      .details h4 {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 13px;
+        letter-spacing: 0.2px;
+      }
+
+      .details-body {
+        font-size: 14px;
+        line-height: 1.5;
+        color: #2f3a4f;
+      }
+
+      .details-body ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
       .result-shell {
         display: grid;
         gap: 8px;
@@ -308,6 +334,14 @@
             <option value="">Choose an example (down arrow)</option>
           </select>
 
+          <label for="analysisMode" style="display:block; margin-top:12px;"><strong>Analysis Mode</strong></label>
+          <select id="analysisMode">
+            <option value="sentiment">Sentiment (Positive/Negative/Neutral)</option>
+            <option value="emotion">Emotion Detection (Joy/Anger/Sadness/Fear...)</option>
+            <option value="multilingual">Multilingual Sentiment</option>
+            <option value="absa">Aspect-Based Sentiment (ABSA)</option>
+          </select>
+
           <label for="text" style="display:block; margin-top:12px;"><strong>Input Text</strong></label>
           <textarea id="text" placeholder="Type your review, feedback, or message here..."></textarea>
 
@@ -326,6 +360,10 @@
           <p id="confidence">0.00%</p>
 
           <div class="meter"><span id="meter"></span></div>
+          <div class="details">
+            <h4>Detailed Output</h4>
+            <div class="details-body" id="detailsBody">No analysis yet.</div>
+          </div>
           <p class="muted" id="status">Enter text and click Analyze Sentiment.</p>
         </aside>
       </section>
@@ -352,6 +390,7 @@
 
       const exampleSelect = document.getElementById("example");
       const textInput = document.getElementById("text");
+      const modeSelect = document.getElementById("analysisMode");
       const analyzeBtn = document.getElementById("analyzeBtn");
       const clearBtn = document.getElementById("clearBtn");
       const sentimentEl = document.getElementById("sentiment");
@@ -359,6 +398,14 @@
       const meterEl = document.getElementById("meter");
       const statusEl = document.getElementById("status");
       const sentimentChipEl = document.getElementById("sentimentChip");
+      const detailsBodyEl = document.getElementById("detailsBody");
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+      }
 
       function setSentimentChip(sentiment) {
         const tone = String(sentiment || "ready").toLowerCase();
@@ -385,6 +432,43 @@
         sentimentChipEl.textContent = "Ready";
       }
 
+      function renderDetails(data) {
+        const mode = String(data.mode || modeSelect.value || "sentiment");
+
+        if (mode === "emotion") {
+          const top = Array.isArray(data.top_emotions) ? data.top_emotions : [];
+          if (top.length === 0) {
+            detailsBodyEl.textContent = "No emotion breakdown available.";
+            return;
+          }
+
+          const list = top
+            .map((item) => `<li>${escapeHtml(item.label)} - ${(Number(item.score) * 100).toFixed(2)}%</li>`)
+            .join("");
+          detailsBodyEl.innerHTML = `<ul>${list}</ul>`;
+          return;
+        }
+
+        if (mode === "absa") {
+          const aspects = Array.isArray(data.aspects) ? data.aspects : [];
+          if (aspects.length === 0) {
+            detailsBodyEl.textContent = "No specific aspects found in text. Try mentioning areas like food, service, delivery, app, or price.";
+            return;
+          }
+
+          const rows = aspects
+            .map(
+              (item) =>
+                `<li><strong>${escapeHtml(item.aspect)}</strong>: ${escapeHtml(item.sentiment)} (${Number(item.confidence).toFixed(2)}%)<br><span style=\"color:#5f6f85\">${escapeHtml(item.text)}</span></li>`
+            )
+            .join("");
+          detailsBodyEl.innerHTML = `<ul>${rows}</ul>`;
+          return;
+        }
+
+        detailsBodyEl.textContent = "Single-label prediction complete.";
+      }
+
       EXAMPLES.forEach((text, idx) => {
         const option = document.createElement("option");
         option.value = text;
@@ -405,6 +489,7 @@
         setSentimentChip("ready");
         confidenceEl.textContent = "0.00%";
         meterEl.style.width = "0%";
+        detailsBodyEl.textContent = "No analysis yet.";
         statusEl.textContent = "Enter text and click Analyze Sentiment.";
       });
 
@@ -420,13 +505,15 @@
         analyzeBtn.textContent = "Analyzing...";
         statusEl.textContent = "Contacting model...";
 
+        const mode = modeSelect.value;
+
         try {
           const response = await fetch("/api/sentiment", {
             method: "POST",
             headers: {
               "Content-Type": "application/json"
             },
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ text, mode })
           });
 
           const data = await response.json();
@@ -438,13 +525,29 @@
           const emojiMap = {
             Positive: "😊",
             Negative: "😡",
-            Neutral: "😐"
+            Neutral: "😐",
+            Joy: "😄",
+            Anger: "😠",
+            Sadness: "😢",
+            Fear: "😨",
+            Surprise: "😲",
+            Disgust: "🤢",
+            Love: "😍"
           };
 
-          sentimentEl.textContent = `${emojiMap[data.sentiment] || "🙂"} ${data.sentiment}`;
-          setSentimentChip(data.sentiment);
-          confidenceEl.textContent = `${Number(data.confidence).toFixed(2)}%`;
-          meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence)))}%`;
+          if (mode === "emotion") {
+            sentimentEl.textContent = `${emojiMap[data.emotion] || "🙂"} ${data.emotion || "Neutral"}`;
+            setSentimentChip(data.emotion || "Neutral");
+            confidenceEl.textContent = `${Number(data.confidence || 0).toFixed(2)}%`;
+            meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence || 0)))}%`;
+          } else {
+            sentimentEl.textContent = `${emojiMap[data.sentiment] || "🙂"} ${data.sentiment}`;
+            setSentimentChip(data.sentiment);
+            confidenceEl.textContent = `${Number(data.confidence).toFixed(2)}%`;
+            meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence)))}%`;
+          }
+
+          renderDetails(data);
           const sourceNote = data.source === "local-fallback" ? " (fallback mode)" : "";
           if (data.source === "local-fallback" && data.reason) {
             statusEl.textContent = `Model: ${data.model}${sourceNote} | Reason: ${data.reason}`;

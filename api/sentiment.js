@@ -1,8 +1,12 @@
 const DEFAULT_MODEL = process.env.HF_MODEL || "cardiffnlp/twitter-roberta-base-sentiment-latest";
+const DEFAULT_MULTILINGUAL_MODEL = process.env.HF_MODEL_MULTILINGUAL || "cardiffnlp/twitter-xlm-roberta-base-sentiment";
+const DEFAULT_EMOTION_MODEL = process.env.HF_MODEL_EMOTION || "j-hartmann/emotion-english-distilroberta-base";
 const NEUTRAL_THRESHOLD = Number(process.env.NEUTRAL_THRESHOLD || 0.7);
 const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
 const Sentiment = require("sentiment");
 const sentimentEngine = new Sentiment();
+
+const VALID_MODES = new Set(["sentiment", "emotion", "multilingual", "absa"]);
 
 const STRONG_NEGATIVE_TERMS = [
   "worst", "refund", "failing", "failed", "broke", "broken", "confusing",
@@ -22,7 +26,7 @@ const NEGATED_NEGATIVE_PATTERNS = [
   "not bad", "not terrible", "not worst", "not awful"
 ];
 
-async function requestInference(url, text, token) {
+async function requestInference(url, text, token, extraBody = {}) {
   const headers = {
     "Content-Type": "application/json"
   };
@@ -38,7 +42,8 @@ async function requestInference(url, text, token) {
       inputs: text,
       options: {
         wait_for_model: true
-      }
+      },
+      ...extraBody
     })
   });
 
@@ -102,6 +107,11 @@ function buildModelPath(modelId) {
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
+}
+
+function getRequestedMode(modeValue) {
+  const mode = String(modeValue || "sentiment").trim().toLowerCase();
+  return VALID_MODES.has(mode) ? mode : "sentiment";
 }
 
 function isAuthLikeError(response, data) {
@@ -209,6 +219,37 @@ function mapLabel(label) {
   return labelMap[raw] || toTitle(raw || "Neutral");
 }
 
+function mapEmotionLabel(label) {
+  const raw = String(label || "").trim().toLowerCase();
+  const emotions = {
+    joy: "Joy",
+    anger: "Anger",
+    sadness: "Sadness",
+    fear: "Fear",
+    surprise: "Surprise",
+    disgust: "Disgust",
+    neutral: "Neutral",
+    love: "Love"
+  };
+  return emotions[raw] || toTitle(raw || "Neutral");
+}
+
+function flattenPredictions(result) {
+  if (Array.isArray(result) && Array.isArray(result[0])) {
+    return result[0];
+  }
+
+  if (Array.isArray(result)) {
+    return result;
+  }
+
+  if (result && typeof result === "object" && "label" in result) {
+    return [result];
+  }
+
+  return [];
+}
+
 function normalizeLabel(label) {
   const mapped = mapLabel(label);
   const low = String(mapped || "").toLowerCase();
@@ -243,15 +284,113 @@ function toAppStyleSentiment(prediction) {
 }
 
 function bestPrediction(result) {
-  if (Array.isArray(result) && Array.isArray(result[0])) {
-    return result[0].reduce((best, curr) => (curr.score > best.score ? curr : best), result[0][0]);
-  }
-
-  if (Array.isArray(result) && result.length > 0) {
-    return result[0];
+  const predictions = flattenPredictions(result);
+  if (predictions.length > 0) {
+    return predictions.reduce((best, curr) => (curr.score > best.score ? curr : best), predictions[0]);
   }
 
   return { label: "neutral", score: 0.0 };
+}
+
+function emotionFromSentimentFallback(text) {
+  const base = localFallbackSentiment(text);
+  if (base.sentiment === "Positive") {
+    return { emotion: "Joy", confidence: base.confidence };
+  }
+  if (base.sentiment === "Negative") {
+    return { emotion: "Anger", confidence: base.confidence };
+  }
+  return { emotion: "Neutral", confidence: base.confidence };
+}
+
+function buildAbsaResult(text) {
+  const rawText = String(text || "");
+  const lower = rawText.toLowerCase();
+
+  const aspectMap = {
+    Food: ["food", "taste", "meal", "dish", "flavor"],
+    Service: ["service", "staff", "waiter", "support", "helpdesk"],
+    Delivery: ["delivery", "shipping", "arrived", "delay", "delayed"],
+    Price: ["price", "cost", "expensive", "cheap", "value"],
+    Quality: ["quality", "material", "build", "durable", "broken", "broke"],
+    App: ["app", "interface", "ui", "checkout", "navigation", "performance"]
+  };
+
+  const clauses = rawText
+    .split(/(?<=[.!?])\s+|\bbut\b|\bhowever\b|\bthough\b/gi)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const aspects = [];
+
+  for (const [aspect, keywords] of Object.entries(aspectMap)) {
+    const hit = clauses.find((clause) => keywords.some((kw) => clause.toLowerCase().includes(kw)));
+    if (!hit) {
+      continue;
+    }
+
+    const local = localFallbackSentiment(hit);
+    aspects.push({
+      aspect,
+      sentiment: local.sentiment,
+      confidence: local.confidence,
+      text: hit
+    });
+  }
+
+  if (aspects.length === 0) {
+    const local = localFallbackSentiment(rawText);
+    return {
+      overallSentiment: local.sentiment,
+      overallConfidence: local.confidence,
+      aspects: []
+    };
+  }
+
+  const scoreMap = { Positive: 1, Neutral: 0, Negative: -1 };
+  const weightedScore = aspects.reduce(
+    (acc, item) => acc + (scoreMap[item.sentiment] || 0) * (item.confidence / 100),
+    0
+  );
+
+  let overallSentiment = "Neutral";
+  if (weightedScore > 0.25) {
+    overallSentiment = "Positive";
+  } else if (weightedScore < -0.25) {
+    overallSentiment = "Negative";
+  }
+
+  const overallConfidence = Number(
+    (aspects.reduce((sum, item) => sum + item.confidence, 0) / aspects.length).toFixed(2)
+  );
+
+  return {
+    overallSentiment,
+    overallConfidence,
+    aspects
+  };
+}
+
+function getCandidateModels(mode, configuredModel) {
+  if (mode === "emotion") {
+    return [
+      cleanModelId(DEFAULT_EMOTION_MODEL),
+      "j-hartmann/emotion-english-distilroberta-base"
+    ].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
+  }
+
+  if (mode === "multilingual") {
+    return [
+      cleanModelId(DEFAULT_MULTILINGUAL_MODEL),
+      "cardiffnlp/twitter-xlm-roberta-base-sentiment"
+    ].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
+  }
+
+  return [
+    configuredModel,
+    "cardiffnlp/twitter-roberta-base-sentiment-latest",
+    "distilbert-base-uncased-finetuned-sst-2-english"
+  ].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
 }
 
 module.exports = async function handler(req, res) {
@@ -261,6 +400,7 @@ module.exports = async function handler(req, res) {
 
   try {
     const text = String(req.body?.text || "").trim();
+    const mode = getRequestedMode(req.body?.mode);
 
     if (!text) {
       return res.status(400).json({ error: "Text is required" });
@@ -271,11 +411,20 @@ module.exports = async function handler(req, res) {
     );
 
     const configuredModel = cleanModelId(DEFAULT_MODEL);
-    const candidateModels = [
-      configuredModel,
-      "cardiffnlp/twitter-roberta-base-sentiment-latest",
-      "distilbert-base-uncased-finetuned-sst-2-english"
-    ].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
+
+    if (mode === "absa") {
+      const absa = buildAbsaResult(text);
+      return res.status(200).json({
+        mode,
+        sentiment: absa.overallSentiment,
+        confidence: absa.overallConfidence,
+        aspects: absa.aspects,
+        model: "absa-heuristic",
+        source: "local-absa"
+      });
+    }
+
+    const candidateModels = getCandidateModels(mode, configuredModel);
 
     let response;
     let data;
@@ -287,7 +436,8 @@ module.exports = async function handler(req, res) {
       selectedModel = modelId;
 
       // Attempt with token first, then anonymous (public model path).
-      let result = await requestInference(url, text, token);
+      const extraBody = mode === "emotion" ? { parameters: { top_k: null } } : {};
+      let result = await requestInference(url, text, token, extraBody);
       response = result.response;
       data = result.data;
       lastErrorText = summarizeHfError(response, data);
@@ -297,7 +447,7 @@ module.exports = async function handler(req, res) {
       // Some token types cannot call provider-routed inference. Retry once
       // anonymously for public models before failing.
       if (!response.ok && token && permissionError) {
-        result = await requestInference(url, text, "");
+        result = await requestInference(url, text, "", extraBody);
         response = result.response;
         data = result.data;
         lastErrorText = summarizeHfError(response, data);
@@ -317,8 +467,22 @@ module.exports = async function handler(req, res) {
     }
 
     if (!response || !response.ok) {
+      if (mode === "emotion") {
+        const fallbackEmotion = emotionFromSentimentFallback(text);
+        return res.status(200).json({
+          mode,
+          emotion: fallbackEmotion.emotion,
+          confidence: fallbackEmotion.confidence,
+          top_emotions: [{ label: fallbackEmotion.emotion, score: Number((fallbackEmotion.confidence / 100).toFixed(4)) }],
+          model: "emotion-fallback",
+          source: "local-fallback",
+          reason: lastErrorText || "No successful response from inference endpoints"
+        });
+      }
+
       const fallback = localFallbackSentiment(text);
       return res.status(200).json({
+        mode,
         sentiment: fallback.sentiment,
         confidence: fallback.confidence,
         model: "sentiment-js-fallback",
@@ -327,10 +491,27 @@ module.exports = async function handler(req, res) {
       });
     }
 
+    if (mode === "emotion") {
+      const predictions = flattenPredictions(data)
+        .map((item) => ({ label: mapEmotionLabel(item.label), score: Number(item.score || 0) }))
+        .sort((a, b) => b.score - a.score);
+
+      const top = predictions[0] || { label: "Neutral", score: 0 };
+      return res.status(200).json({
+        mode,
+        emotion: top.label,
+        confidence: Number((top.score * 100).toFixed(2)),
+        top_emotions: predictions.slice(0, 5),
+        model: selectedModel,
+        source: "huggingface"
+      });
+    }
+
     const prediction = bestPrediction(data);
     const normalized = toAppStyleSentiment(prediction);
 
     return res.status(200).json({
+      mode,
       sentiment: normalized.sentiment,
       confidence: normalized.confidence,
       model: selectedModel,
