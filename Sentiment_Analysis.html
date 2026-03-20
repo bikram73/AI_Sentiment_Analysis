@@ -224,11 +224,7 @@
         margin-top: 14px;
       }
 
-      #batchAnalyzeBtn {
-        background: linear-gradient(135deg, #2563eb, #1e40af);
-      }
-
-      #clearBtn {
+      .actions button:last-child {
         background: linear-gradient(135deg, #4b5563, #334155);
       }
 
@@ -256,34 +252,6 @@
       .details-body ul {
         margin: 0;
         padding-left: 18px;
-      }
-
-      .batch-table-wrap {
-        max-height: 280px;
-        overflow: auto;
-        border: 1px solid #dbe3f3;
-        border-radius: 10px;
-      }
-
-      .batch-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13px;
-      }
-
-      .batch-table th,
-      .batch-table td {
-        text-align: left;
-        padding: 8px;
-        border-bottom: 1px solid #e7edf9;
-        vertical-align: top;
-      }
-
-      .batch-table th {
-        position: sticky;
-        top: 0;
-        background: #edf5ff;
-        z-index: 1;
       }
 
       .result-shell {
@@ -400,11 +368,9 @@
 
           <label for="text" style="display:block; margin-top:12px;"><strong>Input Text</strong></label>
           <textarea id="text" placeholder="Type your review, feedback, or message here..."></textarea>
-          <p class="muted" style="margin:8px 0 0; font-size:13px;">Batch mode: enter one sentence per line, then click Analyze Batch.</p>
 
           <div class="actions">
             <button id="analyzeBtn">Analyze Sentiment</button>
-            <button id="batchAnalyzeBtn" type="button">Analyze Batch</button>
             <button id="clearBtn" type="button">Clear</button>
           </div>
         </div>
@@ -503,7 +469,6 @@
       const textInput = document.getElementById("text");
       const modeSelect = document.getElementById("analysisMode");
       const analyzeBtn = document.getElementById("analyzeBtn");
-      const batchAnalyzeBtn = document.getElementById("batchAnalyzeBtn");
       const clearBtn = document.getElementById("clearBtn");
       const sentimentEl = document.getElementById("sentiment");
       const confidenceEl = document.getElementById("confidence");
@@ -600,45 +565,6 @@
         detailsBodyEl.textContent = "Single-label prediction complete.";
       }
 
-      function parseBatchLines(rawText) {
-        return String(rawText || "")
-          .split(/\r?\n/g)
-          .map((line) => line.trim())
-          .filter(Boolean);
-      }
-
-      function getBatchLabel(item, mode) {
-        if (mode === "emotion") {
-          return String(item.emotion || "Neutral");
-        }
-        return String(item.sentiment || "Neutral");
-      }
-
-      function renderBatchDetails(results, mode) {
-        if (!Array.isArray(results) || results.length === 0) {
-          detailsBodyEl.textContent = "No batch rows to show.";
-          return;
-        }
-
-        const rows = results
-          .map((item) => {
-            const lineNo = Number(item.index || 0);
-            const text = escapeHtml(String(item.text || ""));
-            const label = escapeHtml(getBatchLabel(item, mode));
-            const conf = Number(item.confidence || 0).toFixed(2);
-            return `<tr><td>${lineNo}</td><td>${text}</td><td>${label}</td><td>${conf}%</td></tr>`;
-          })
-          .join("");
-
-        detailsBodyEl.innerHTML = `<div class="batch-table-wrap"><table class="batch-table"><thead><tr><th>#</th><th>Text</th><th>Result</th><th>Confidence</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-      }
-
-      function setButtonsBusy(busy) {
-        analyzeBtn.disabled = busy;
-        batchAnalyzeBtn.disabled = busy;
-        clearBtn.disabled = busy;
-      }
-
       populateExamples(modeSelect.value);
 
       exampleSelect.addEventListener("change", () => {
@@ -673,7 +599,7 @@
           return;
         }
 
-        setButtonsBusy(true);
+        analyzeBtn.disabled = true;
         analyzeBtn.textContent = "Analyzing...";
         statusEl.textContent = "Contacting model...";
 
@@ -731,64 +657,8 @@
         } catch (error) {
           statusEl.textContent = error.message;
         } finally {
-          setButtonsBusy(false);
+          analyzeBtn.disabled = false;
           analyzeBtn.textContent = "Analyze Sentiment";
-        }
-      });
-
-      batchAnalyzeBtn.addEventListener("click", async () => {
-        const lines = parseBatchLines(textInput.value);
-        const mode = modeSelect.value;
-
-        if (lines.length < 2) {
-          statusEl.textContent = "Add at least 2 lines for batch analysis (one sentence per line).";
-          return;
-        }
-
-        setButtonsBusy(true);
-        batchAnalyzeBtn.textContent = "Analyzing Batch...";
-        statusEl.textContent = `Analyzing ${lines.length} lines...`;
-
-        try {
-          const response = await fetch("/api/sentiment", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ texts: lines, mode })
-          });
-
-          const data = await response.json();
-
-          if (!response.ok) {
-            throw new Error(data.error || "Batch request failed");
-          }
-
-          const results = Array.isArray(data.results) ? data.results : [];
-          const avgConfidence = Number(data.confidence || 0);
-
-          const counts = results.reduce((acc, item) => {
-            const label = getBatchLabel(item, mode);
-            acc[label] = (acc[label] || 0) + 1;
-            return acc;
-          }, {});
-
-          const dominant = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || "Neutral";
-
-          sentimentEl.textContent = `${results.length} items`;
-          confidenceEl.textContent = `${avgConfidence.toFixed(2)}%`;
-          meterEl.style.width = `${Math.max(0, Math.min(100, avgConfidence))}%`;
-          setSentimentChip(dominant);
-          renderBatchDetails(results, mode);
-
-          const first = results[0] || {};
-          const sourceNote = first.source === "local-fallback" ? " (fallback mode)" : "";
-          statusEl.textContent = `Batch complete | Dominant: ${dominant} | Avg confidence: ${avgConfidence.toFixed(2)}%${sourceNote}`;
-        } catch (error) {
-          statusEl.textContent = error.message;
-        } finally {
-          setButtonsBusy(false);
-          batchAnalyzeBtn.textContent = "Analyze Batch";
         }
       });
     </script>
