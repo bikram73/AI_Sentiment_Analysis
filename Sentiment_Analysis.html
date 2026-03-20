@@ -191,6 +191,95 @@
         resize: vertical;
       }
 
+      .live-meter-shell {
+        margin-top: 12px;
+        border: 1px solid #dbe3f3;
+        border-radius: 14px;
+        padding: 10px 12px 12px;
+        background: #f8fbff;
+      }
+
+      .live-meter-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+
+      .live-score {
+        font-weight: 800;
+        color: #355070;
+      }
+
+      .live-score.positive {
+        color: var(--positive);
+      }
+
+      .live-score.negative {
+        color: var(--negative);
+      }
+
+      .live-score.neutral {
+        color: #355070;
+      }
+
+      .live-scale {
+        display: flex;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+
+      .live-track {
+        position: relative;
+        height: 14px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #ba181b 0%, #f4a261 50%, #2b9348 100%);
+        overflow: hidden;
+        border: 1px solid #cfdaee;
+      }
+
+      .live-fill {
+        position: absolute;
+        top: 0;
+        height: 100%;
+        left: 50%;
+        width: 0;
+        background: rgba(20, 33, 61, 0.2);
+        transition: left 180ms ease, width 180ms ease;
+      }
+
+      .live-track::before {
+        content: "";
+        position: absolute;
+        top: -1px;
+        bottom: -1px;
+        left: 50%;
+        width: 2px;
+        background: rgba(20, 33, 61, 0.35);
+      }
+
+      .live-needle {
+        position: absolute;
+        top: -3px;
+        left: 50%;
+        width: 3px;
+        height: 20px;
+        border-radius: 999px;
+        background: #14213d;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7);
+        transform: translateX(-50%);
+        transition: left 180ms ease;
+      }
+
+      .live-hint {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
       button {
         padding: 13px;
         background: linear-gradient(135deg, #1d4ed8, #006d77);
@@ -370,6 +459,23 @@
           <label for="text" style="display:block; margin-top:12px;"><strong>Input Text</strong></label>
           <textarea id="text" placeholder="Type your review, feedback, or message here..."></textarea>
 
+          <div class="live-meter-shell">
+            <div class="live-meter-head">
+              <strong>Live Sentiment Meter</strong>
+              <span class="live-score neutral" id="liveScore">0.00</span>
+            </div>
+            <div class="live-scale">
+              <span>-1</span>
+              <span>0</span>
+              <span>+1</span>
+            </div>
+            <div class="live-track">
+              <span class="live-fill" id="liveFill"></span>
+              <span class="live-needle" id="liveNeedle"></span>
+            </div>
+            <p class="live-hint" id="liveHint">Start typing to see the live sentiment score.</p>
+          </div>
+
           <div class="actions">
             <button id="analyzeBtn">Analyze Sentiment</button>
             <button id="clearBtn" type="button">Clear</button>
@@ -494,6 +600,47 @@
       const statusEl = document.getElementById("status");
       const sentimentChipEl = document.getElementById("sentimentChip");
       const detailsBodyEl = document.getElementById("detailsBody");
+      const liveScoreEl = document.getElementById("liveScore");
+      const liveFillEl = document.getElementById("liveFill");
+      const liveNeedleEl = document.getElementById("liveNeedle");
+      const liveHintEl = document.getElementById("liveHint");
+
+      const LIVE_LEXICON = {
+        love: 1.2,
+        amazing: 1.1,
+        excellent: 1.1,
+        great: 0.9,
+        good: 0.8,
+        happy: 0.8,
+        thrilled: 1.1,
+        fantastic: 1.2,
+        recommended: 0.8,
+        fast: 0.4,
+        helpful: 0.7,
+        delicious: 0.9,
+        clean: 0.5,
+        best: 1.0,
+        worst: -1.2,
+        bad: -0.8,
+        terrible: -1.1,
+        disappointed: -1.0,
+        slow: -0.5,
+        confusing: -0.8,
+        broken: -1.1,
+        broke: -1.1,
+        failing: -1.0,
+        failed: -1.0,
+        angry: -0.9,
+        sad: -0.7,
+        poor: -0.8,
+        rude: -0.9,
+        expensive: -0.4,
+        delay: -0.7,
+        delayed: -0.7
+      };
+
+      const NEGATION_WORDS = new Set(["not", "never", "no", "hardly", "rarely", "n't"]);
+      let liveMeterTimer;
 
       function populateExamples(mode) {
         const selectedMode = String(mode || "sentiment").toLowerCase();
@@ -544,6 +691,72 @@
         }
 
         sentimentChipEl.textContent = "Ready";
+      }
+
+      function tokenizeForLiveMeter(text) {
+        return String(text || "")
+          .toLowerCase()
+          .replace(/[^a-z\s']/g, " ")
+          .split(/\s+/)
+          .filter(Boolean);
+      }
+
+      function calculateLiveScore(text) {
+        const tokens = tokenizeForLiveMeter(text);
+
+        if (tokens.length === 0) {
+          return 0;
+        }
+
+        let rawScore = 0;
+
+        for (let i = 0; i < tokens.length; i += 1) {
+          const token = tokens[i];
+          const base = Number(LIVE_LEXICON[token] || 0);
+          if (!base) {
+            continue;
+          }
+
+          const prev = tokens[i - 1] || "";
+          const prev2 = tokens[i - 2] || "";
+          const isNegated = NEGATION_WORDS.has(prev) || NEGATION_WORDS.has(prev2);
+          rawScore += isNegated ? -base * 0.9 : base;
+        }
+
+        const normalized = rawScore / (Math.sqrt(tokens.length) + 1.8);
+        return Math.max(-1, Math.min(1, normalized));
+      }
+
+      function updateLiveMeter(score, mode = modeSelect.value) {
+        const safeScore = Math.max(-1, Math.min(1, Number(score) || 0));
+        const positionPct = ((safeScore + 1) / 2) * 100;
+        const isPositive = safeScore > 0.12;
+        const isNegative = safeScore < -0.12;
+
+        liveScoreEl.textContent = safeScore.toFixed(2);
+        liveScoreEl.className = `live-score ${isPositive ? "positive" : isNegative ? "negative" : "neutral"}`;
+        liveNeedleEl.style.left = `${positionPct}%`;
+
+        if (safeScore >= 0) {
+          liveFillEl.style.left = "50%";
+          liveFillEl.style.width = `${safeScore * 50}%`;
+        } else {
+          liveFillEl.style.left = `${50 + safeScore * 50}%`;
+          liveFillEl.style.width = `${Math.abs(safeScore) * 50}%`;
+        }
+
+        if (mode === "batch") {
+          liveHintEl.textContent = "Live meter reads the full text while you type. Batch results still come from Analyze Batch.";
+          return;
+        }
+
+        if (isPositive) {
+          liveHintEl.textContent = "Live tone is trending positive.";
+        } else if (isNegative) {
+          liveHintEl.textContent = "Live tone is trending negative.";
+        } else {
+          liveHintEl.textContent = "Live tone is currently neutral or mixed.";
+        }
       }
 
       function renderDetails(data) {
@@ -618,6 +831,14 @@
         analyzeBtn.textContent = isBatchMode ? "Analyze Batch" : "Analyze Sentiment";
         detailsBodyEl.textContent = `Examples updated for ${modeSelect.options[modeSelect.selectedIndex].text}.`;
         statusEl.textContent = "Select an example or enter your own text.";
+        updateLiveMeter(calculateLiveScore(textInput.value), modeSelect.value);
+      });
+
+      textInput.addEventListener("input", () => {
+        clearTimeout(liveMeterTimer);
+        liveMeterTimer = setTimeout(() => {
+          updateLiveMeter(calculateLiveScore(textInput.value));
+        }, 120);
       });
 
       clearBtn.addEventListener("click", () => {
@@ -631,7 +852,10 @@
         statusEl.textContent = modeSelect.value === "batch"
           ? "Enter multiple lines and click Analyze Batch."
           : "Enter text and click Analyze Sentiment.";
+        updateLiveMeter(0, modeSelect.value);
       });
+
+      updateLiveMeter(0, modeSelect.value);
 
       analyzeBtn.addEventListener("click", async () => {
         const text = textInput.value.trim();
