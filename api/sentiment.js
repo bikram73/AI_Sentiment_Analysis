@@ -1,4 +1,4 @@
-const DEFAULT_MODEL = process.env.HF_MODEL || "distilbert-base-uncased-finetuned-sst-2-english";
+const DEFAULT_MODEL = process.env.HF_MODEL || "cardiffnlp/twitter-roberta-base-sentiment-latest";
 const NEUTRAL_THRESHOLD = Number(process.env.NEUTRAL_THRESHOLD || 0.7);
 const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
 const Sentiment = require("sentiment");

@@ -4,8 +4,8 @@ from functools import lru_cache
 import gradio as gr
 from transformers import pipeline
 
-# Faster default model (~250MB) for lower first-run download time.
-MODEL_NAME = os.getenv("MODEL_NAME", "distilbert-base-uncased-finetuned-sst-2-english")
+# Default model requested by user (3-class sentiment).
+MODEL_NAME = os.getenv("MODEL_NAME", "cardiffnlp/twitter-roberta-base-sentiment-latest")
 # If confidence is below this threshold, treat output as Neutral.
 NEUTRAL_THRESHOLD = float(os.getenv("NEUTRAL_THRESHOLD", "0.70"))
 
