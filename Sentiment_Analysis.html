@@ -104,6 +104,29 @@
         width: 180px;
         height: 180px;
         background: radial-gradient(circle, rgba(255, 255, 255, 0.45) 0%, transparent 70%);
+        pointer-events: none;
+      }
+
+      .home-btn {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        z-index: 5;
+        color: #fff;
+        text-decoration: none;
+        font-size: 14px;
+        background: rgba(29, 78, 216, 0.95);
+        padding: 8px 14px;
+        border-radius: 8px;
+        border: 1px solid rgba(147, 197, 253, 0.85);
+        box-shadow: 0 0 14px rgba(59, 130, 246, 0.7), 0 0 26px rgba(37, 99, 235, 0.45);
+        transition: all 0.3s ease;
+      }
+
+      .home-btn:hover {
+        background: rgba(37, 99, 235, 1);
+        box-shadow: 0 0 18px rgba(59, 130, 246, 0.9), 0 0 34px rgba(37, 99, 235, 0.65);
+        transform: translateY(-1px);
       }
 
       .hero h1 {
@@ -318,7 +341,7 @@
   <body>
     <main class="container">
       <section class="hero">
-        <a href="index.html" style="position: absolute; top: 20px; right: 20px; color: #fff; text-decoration: none; font-size: 14px; background: rgba(29, 78, 216, 0.95); padding: 8px 14px; border-radius: 8px; border: 1px solid rgba(147, 197, 253, 0.85); box-shadow: 0 0 14px rgba(59, 130, 246, 0.7), 0 0 26px rgba(37, 99, 235, 0.45); transition: all 0.3s ease;" onmouseover="this.style.background='rgba(37, 99, 235, 1)'; this.style.boxShadow='0 0 18px rgba(59, 130, 246, 0.9), 0 0 34px rgba(37, 99, 235, 0.65)'; this.style.transform='translateY(-1px)'" onmouseout="this.style.background='rgba(29, 78, 216, 0.95)'; this.style.boxShadow='0 0 14px rgba(59, 130, 246, 0.7), 0 0 26px rgba(37, 99, 235, 0.45)'; this.style.transform='translateY(0)'">← Home</a>
+        <a href="index.html" class="home-btn">← Home</a>
         <h1>AI Sentiment Analyzer</h1>
         <p>Analyze emotions in text with a polished real-time dashboard powered by Vercel API inference.</p>
         <div class="hero-badges">
