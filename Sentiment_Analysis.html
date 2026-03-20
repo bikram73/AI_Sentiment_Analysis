@@ -359,6 +359,7 @@
             <option value="emotion">Emotion Detection (Joy/Anger/Sadness/Fear...)</option>
             <option value="multilingual">Multilingual Sentiment</option>
             <option value="absa">Aspect-Based Sentiment (ABSA)</option>
+            <option value="batch">Batch Input Analysis</option>
           </select>
 
           <label for="example"><strong>Examples</strong></label>
@@ -462,6 +463,23 @@
           "The camera quality is excellent, while low-light performance is weak.",
           "Food quality was average, service was friendly, and prices were expensive.",
           "The software is intuitive, but security settings are difficult to configure."
+        ],
+        batch: [
+          "I love this product.\nThe service was okay.\nThis is the worst experience I have had.",
+          "Support responded quickly and solved my issue in minutes.\nThe interface is confusing and hard to navigate.\nNot bad, not great, just average overall.",
+          "The food tasted fresh and delicious.\nDelivery was delayed by two days.\nI will order again.",
+          "Great value for money.\nThe quality is poor and broke quickly.\nCustomer support was helpful.",
+          "The app design is beautiful.\nCheckout keeps failing.\nPerformance is acceptable for now.",
+          "I am thrilled with the update.\nSome features are still buggy.\nOverall it feels stable.",
+          "Room was clean and comfortable.\nStaff were rude at check-in.\nBreakfast was average.",
+          "Fast shipping and good packaging.\nProduct color was different than shown.\nRefund process was smooth.",
+          "This camera is amazing in daylight.\nLow-light photos are disappointing.\nBattery life is decent.",
+          "The teacher explained concepts clearly.\nAssignments were too difficult.\nI learned a lot.",
+          "Movie started slowly.\nSecond half was fantastic.\nSound quality was just okay.",
+          "The UI is clean and modern.\nNavigation is confusing on mobile.\nDark mode looks great.",
+          "Excellent customer care.\nLong waiting time on calls.\nIssue resolved in one attempt.",
+          "The meal was overpriced.\nTaste was excellent.\nService speed was acceptable.",
+          "Setup was quick and easy.\nDocumentation is incomplete.\nThe tool works as expected."
         ]
       };
 
@@ -531,6 +549,23 @@
       function renderDetails(data) {
         const mode = String(data.mode || modeSelect.value || "sentiment");
 
+        if (mode === "batch") {
+          const items = Array.isArray(data.items) ? data.items : [];
+          if (items.length === 0) {
+            detailsBodyEl.textContent = "No batch results available.";
+            return;
+          }
+
+          const rows = items
+            .map(
+              (item, idx) =>
+                `<li><strong>#${idx + 1}</strong> ${escapeHtml(item.sentiment || "Neutral")} (${Number(item.confidence || 0).toFixed(2)}%)<br><span style=\"color:#5f6f85\">${escapeHtml(item.text || "")}</span></li>`
+            )
+            .join("");
+          detailsBodyEl.innerHTML = `<ul>${rows}</ul>`;
+          return;
+        }
+
         if (mode === "emotion") {
           const top = Array.isArray(data.top_emotions) ? data.top_emotions : [];
           if (top.length === 0) {
@@ -576,6 +611,11 @@
       modeSelect.addEventListener("change", () => {
         populateExamples(modeSelect.value);
         textInput.value = "";
+        const isBatchMode = modeSelect.value === "batch";
+        textInput.placeholder = isBatchMode
+          ? "Paste multiple lines. Each non-empty line is analyzed as a separate input..."
+          : "Type your review, feedback, or message here...";
+        analyzeBtn.textContent = isBatchMode ? "Analyze Batch" : "Analyze Sentiment";
         detailsBodyEl.textContent = `Examples updated for ${modeSelect.options[modeSelect.selectedIndex].text}.`;
         statusEl.textContent = "Select an example or enter your own text.";
       });
@@ -588,7 +628,9 @@
         confidenceEl.textContent = "0.00%";
         meterEl.style.width = "0%";
         detailsBodyEl.textContent = "No analysis yet.";
-        statusEl.textContent = "Enter text and click Analyze Sentiment.";
+        statusEl.textContent = modeSelect.value === "batch"
+          ? "Enter multiple lines and click Analyze Batch."
+          : "Enter text and click Analyze Sentiment.";
       });
 
       analyzeBtn.addEventListener("click", async () => {
@@ -600,10 +642,9 @@
         }
 
         analyzeBtn.disabled = true;
-        analyzeBtn.textContent = "Analyzing...";
-        statusEl.textContent = "Contacting model...";
-
         const mode = modeSelect.value;
+        analyzeBtn.textContent = mode === "batch" ? "Analyzing Batch..." : "Analyzing...";
+        statusEl.textContent = "Contacting model...";
 
         try {
           const response = await fetch("/api/sentiment", {
@@ -633,7 +674,12 @@
             Love: "😍"
           };
 
-          if (mode === "emotion") {
+          if (mode === "batch") {
+            sentimentEl.textContent = `${emojiMap[data.sentiment] || "🙂"} ${data.sentiment || "Neutral"}`;
+            setSentimentChip(data.sentiment || "Neutral");
+            confidenceEl.textContent = `${Number(data.confidence || 0).toFixed(2)}%`;
+            meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence || 0)))}%`;
+          } else if (mode === "emotion") {
             sentimentEl.textContent = `${emojiMap[data.emotion] || "🙂"} ${data.emotion || "Neutral"}`;
             setSentimentChip(data.emotion || "Neutral");
             confidenceEl.textContent = `${Number(data.confidence || 0).toFixed(2)}%`;
@@ -658,7 +704,7 @@
           statusEl.textContent = error.message;
         } finally {
           analyzeBtn.disabled = false;
-          analyzeBtn.textContent = "Analyze Sentiment";
+          analyzeBtn.textContent = modeSelect.value === "batch" ? "Analyze Batch" : "Analyze Sentiment";
         }
       });
     </script>

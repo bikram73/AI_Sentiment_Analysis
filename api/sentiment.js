@@ -6,7 +6,7 @@ const ROUTER_BASE_URL = "https://router.huggingface.co/hf-inference/models";
 const Sentiment = require("sentiment");
 const sentimentEngine = new Sentiment();
 
-const VALID_MODES = new Set(["sentiment", "emotion", "multilingual", "absa"]);
+const VALID_MODES = new Set(["sentiment", "emotion", "multilingual", "absa", "batch"]);
 
 const STRONG_NEGATIVE_TERMS = [
   "worst", "refund", "failing", "failed", "broke", "broken", "confusing",
@@ -393,6 +393,42 @@ function getCandidateModels(mode, configuredModel) {
   ].filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
 }
 
+function splitBatchInputs(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
+function aggregateBatch(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return {
+      sentiment: "Neutral",
+      confidence: 0
+    };
+  }
+
+  const scoreMap = { Positive: 1, Neutral: 0, Negative: -1 };
+  const score = items.reduce(
+    (acc, item) => acc + (scoreMap[item.sentiment] || 0) * (Number(item.confidence || 0) / 100),
+    0
+  );
+
+  let sentiment = "Neutral";
+  if (score > 0.25) {
+    sentiment = "Positive";
+  } else if (score < -0.25) {
+    sentiment = "Negative";
+  }
+
+  const confidence = Number(
+    (items.reduce((sum, item) => sum + Number(item.confidence || 0), 0) / items.length).toFixed(2)
+  );
+
+  return { sentiment, confidence };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -411,6 +447,34 @@ module.exports = async function handler(req, res) {
     );
 
     const configuredModel = cleanModelId(DEFAULT_MODEL);
+
+    if (mode === "batch") {
+      const lines = splitBatchInputs(text);
+      if (lines.length === 0) {
+        return res.status(400).json({ error: "Batch mode requires at least one non-empty line" });
+      }
+
+      const items = lines.map((line) => {
+        const predicted = localFallbackSentiment(line);
+        return {
+          text: line,
+          sentiment: predicted.sentiment,
+          confidence: predicted.confidence
+        };
+      });
+
+      const summary = aggregateBatch(items);
+
+      return res.status(200).json({
+        mode,
+        sentiment: summary.sentiment,
+        confidence: summary.confidence,
+        items,
+        model: "batch-local-fallback",
+        source: "local-fallback",
+        warning: "Batch mode currently uses local scoring per line."
+      });
+    }
 
     if (mode === "absa") {
       const absa = buildAbsaResult(text);

@@ -15,7 +15,8 @@ This repository now supports two deployment paths:
 
 - Beautiful and responsive sentiment analysis interface
 - Confidence score with visual progress meter
-- Example text dropdown with multiple samples
+- 5 analysis modes: Sentiment, Emotion, Multilingual, ABSA, and Batch Input Analysis
+- 15 curated examples per analysis mode
 - Fast Vercel deployment using serverless endpoint
 - Gradio app for local development and Hugging Face Spaces
 
@@ -115,15 +116,16 @@ AI_Sentiment_Analysis_Web_App/
 - The service was okay. Nothing special, but not terrible either.
 - This is the worst experience I have had. I want a refund immediately.
 
+The Vercel analyzer page includes 15 examples for each analysis mode, including Batch Input Analysis.
+
 ## ⏱️ First Run Download Note
 
 On first launch, the model is downloaded and cached locally. This can take time depending on your internet speed. Later runs are much faster because the cached model is reused.
 
 ## 🔮 Future Improvements
 
-- Multi-language sentiment analysis
 - User history and export options
 - Confidence trend charts
-- Batch input analysis
+- Custom model selection per analysis mode
 
 
