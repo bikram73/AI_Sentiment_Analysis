@@ -424,6 +424,54 @@
         border-color: #c9d5ea;
       }
 
+      .explainability {
+        margin-top: 10px;
+        border: 1px solid #dbe3f3;
+        border-radius: 14px;
+        background: #f8fbff;
+        padding: 10px;
+      }
+
+      .explainability h4 {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 13px;
+        letter-spacing: 0.2px;
+      }
+
+      .explainability-rows {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .explainability-line {
+        font-size: 13px;
+        line-height: 1.4;
+        color: #334155;
+      }
+
+      .word-pill {
+        display: inline-block;
+        margin: 3px 4px 0 0;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .word-pill.positive {
+        background: #d8f3dc;
+        color: #1b4332;
+        border: 1px solid #b7e4c7;
+      }
+
+      .word-pill.negative {
+        background: #ffe3e3;
+        color: #9d0208;
+        border: 1px solid #ffc0cb;
+      }
+
       .charts-panel {
         padding: 18px;
       }
@@ -578,6 +626,13 @@
           <div class="hint-tags" id="hintTags">
             <span class="hint-tag none">No warning tags.</span>
           </div>
+          <div class="explainability" id="explainability" style="display:none;">
+            <h4>Why This Prediction (Top Contributing Words)</h4>
+            <div class="explainability-rows">
+              <div class="explainability-line" id="positiveExplainability"></div>
+              <div class="explainability-line" id="negativeExplainability"></div>
+            </div>
+          </div>
           <p class="muted" id="status">Enter text and click Analyze Sentiment.</p>
         </aside>
       </section>
@@ -710,6 +765,9 @@
       const sentimentChipEl = document.getElementById("sentimentChip");
       const detailsBodyEl = document.getElementById("detailsBody");
       const hintTagsEl = document.getElementById("hintTags");
+      const explainabilityEl = document.getElementById("explainability");
+      const positiveExplainabilityEl = document.getElementById("positiveExplainability");
+      const negativeExplainabilityEl = document.getElementById("negativeExplainability");
       const textBackdropEl = document.getElementById("textBackdrop");
       const pieCanvas = document.getElementById("sentimentPieChart");
       const barCanvas = document.getElementById("sentimentBarChart");
@@ -1194,6 +1252,37 @@
         hintTagsEl.innerHTML = tags;
       }
 
+      function renderExplainability(explainability) {
+        const data = explainability && typeof explainability === "object" ? explainability : {};
+        const positiveWords = Array.isArray(data.positiveWords) ? data.positiveWords : [];
+        const negativeWords = Array.isArray(data.negativeWords) ? data.negativeWords : [];
+
+        if (positiveWords.length === 0 && negativeWords.length === 0) {
+          explainabilityEl.style.display = "none";
+          positiveExplainabilityEl.textContent = "";
+          negativeExplainabilityEl.textContent = "";
+          return;
+        }
+
+        explainabilityEl.style.display = "block";
+
+        if (positiveWords.length > 0) {
+          positiveExplainabilityEl.innerHTML = `<strong>Positive:</strong> ${positiveWords
+            .map((word) => `<span class="word-pill positive">${escapeHtml(word)}</span>`)
+            .join("")}`;
+        } else {
+          positiveExplainabilityEl.innerHTML = "<strong>Positive:</strong> none detected";
+        }
+
+        if (negativeWords.length > 0) {
+          negativeExplainabilityEl.innerHTML = `<strong>Negative:</strong> ${negativeWords
+            .map((word) => `<span class="word-pill negative">${escapeHtml(word)}</span>`)
+            .join("")}`;
+        } else {
+          negativeExplainabilityEl.innerHTML = "<strong>Negative:</strong> none detected";
+        }
+      }
+
       populateExamples(modeSelect.value);
 
       exampleSelect.addEventListener("change", () => {
@@ -1214,6 +1303,7 @@
         detailsBodyEl.textContent = `Examples updated for ${modeSelect.options[modeSelect.selectedIndex].text}.`;
         statusEl.textContent = "Select an example or enter your own text.";
         renderKeywordHighlights(textInput.value);
+        renderExplainability(null);
       });
 
       textInput.addEventListener("input", () => {
@@ -1237,6 +1327,7 @@
           : "Enter text and click Analyze Sentiment.";
         renderHintTags([]);
         renderKeywordHighlights("");
+        renderExplainability(null);
       });
 
       resetTrendsBtn.addEventListener("click", () => {
@@ -1323,6 +1414,7 @@
 
           renderDetails(data);
           renderHintTags(data.hints);
+          renderExplainability(data.explainability);
           const sourceNote = data.source === "local-fallback" ? " (fallback mode)" : "";
           if (data.source === "local-fallback" && data.reason) {
             statusEl.textContent = `Model: ${data.model}${sourceNote} | Reason: ${data.reason}`;

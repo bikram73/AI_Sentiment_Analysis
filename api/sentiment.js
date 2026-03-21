@@ -509,6 +509,50 @@ function detectTextHints(text) {
   return hints;
 }
 
+function extractExplainability(text) {
+  const raw = String(text || "").trim();
+  if (!raw) {
+    return {
+      positiveWords: [],
+      negativeWords: []
+    };
+  }
+
+  const analysis = sentimentEngine.analyze(raw);
+  const positiveSet = new Set((analysis.positive || []).map((word) => String(word).toLowerCase()));
+  const negativeSet = new Set((analysis.negative || []).map((word) => String(word).toLowerCase()));
+  const tokens = raw.toLowerCase().match(/\b[a-z][a-z'-]*\b/g) || [];
+
+  const freqPositive = new Map();
+  const freqNegative = new Map();
+
+  tokens.forEach((token) => {
+    if (positiveSet.has(token)) {
+      freqPositive.set(token, (freqPositive.get(token) || 0) + 1);
+    }
+
+    if (negativeSet.has(token)) {
+      freqNegative.set(token, (freqNegative.get(token) || 0) + 1);
+    }
+  });
+
+  const toTopWords = (freqMap) =>
+    [...freqMap.entries()]
+      .sort((a, b) => {
+        if (b[1] !== a[1]) {
+          return b[1] - a[1];
+        }
+        return a[0].localeCompare(b[0]);
+      })
+      .slice(0, 5)
+      .map(([word]) => word);
+
+  return {
+    positiveWords: toTopWords(freqPositive),
+    negativeWords: toTopWords(freqNegative)
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -518,6 +562,7 @@ module.exports = async function handler(req, res) {
     const text = String(req.body?.text || "").trim();
     const mode = getRequestedMode(req.body?.mode);
     const hints = detectTextHints(text);
+    const explainability = extractExplainability(text);
 
     if (!text) {
       return res.status(400).json({ error: "Text is required" });
@@ -552,6 +597,7 @@ module.exports = async function handler(req, res) {
         confidence: summary.confidence,
         items,
         hints,
+        explainability,
         model: "batch-local-fallback",
         source: "local-fallback",
         warning: "Batch mode currently uses local scoring per line."
@@ -566,6 +612,7 @@ module.exports = async function handler(req, res) {
         confidence: absa.overallConfidence,
         aspects: absa.aspects,
         hints,
+        explainability,
         model: "absa-heuristic",
         source: "local-absa"
       });
@@ -622,6 +669,7 @@ module.exports = async function handler(req, res) {
           confidence: fallbackEmotion.confidence,
           top_emotions: [{ label: fallbackEmotion.emotion, score: Number((fallbackEmotion.confidence / 100).toFixed(4)) }],
           hints,
+          explainability,
           model: "emotion-fallback",
           source: "local-fallback",
           reason: lastErrorText || "No successful response from inference endpoints"
@@ -634,6 +682,7 @@ module.exports = async function handler(req, res) {
         sentiment: fallback.sentiment,
         confidence: fallback.confidence,
         hints,
+        explainability,
         model: "sentiment-js-fallback",
         source: "local-fallback",
         reason: lastErrorText || "No successful response from inference endpoints"
@@ -652,6 +701,7 @@ module.exports = async function handler(req, res) {
         confidence: Number((top.score * 100).toFixed(2)),
         top_emotions: predictions.slice(0, 5),
         hints,
+        explainability,
         model: selectedModel,
         source: "huggingface"
       });
@@ -665,6 +715,7 @@ module.exports = async function handler(req, res) {
       sentiment: normalized.sentiment,
       confidence: normalized.confidence,
       hints,
+      explainability,
       model: selectedModel,
       source: "huggingface"
     });
