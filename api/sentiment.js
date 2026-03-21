@@ -518,6 +518,55 @@ function aggregateBatch(items) {
   return { sentiment, confidence };
 }
 
+async function inferBatchLineWithApiFallback(line, token, configuredModel) {
+  const candidateModels = getCandidateModels("sentiment", configuredModel);
+  let lastErrorText = "";
+
+  for (const modelId of candidateModels) {
+    const url = `${ROUTER_BASE_URL}/${buildModelPath(modelId)}`;
+
+    let result = await requestInference(url, line, token);
+    let response = result.response;
+    let data = result.data;
+    lastErrorText = summarizeHfError(response, data);
+
+    const permissionError = isAuthLikeError(response, data);
+    if (!response.ok && token && permissionError) {
+      result = await requestInference(url, line, "");
+      response = result.response;
+      data = result.data;
+      lastErrorText = summarizeHfError(response, data);
+    }
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        continue;
+      }
+      break;
+    }
+
+    const prediction = bestPrediction(data);
+    const normalized = toAppStyleSentiment(prediction);
+    return {
+      text: line,
+      sentiment: normalized.sentiment,
+      confidence: normalized.confidence,
+      source: "huggingface",
+      model: modelId
+    };
+  }
+
+  const fallback = localFallbackSentiment(line);
+  return {
+    text: line,
+    sentiment: fallback.sentiment,
+    confidence: fallback.confidence,
+    source: "local-fallback",
+    model: "sentiment-js-fallback",
+    reason: lastErrorText || "No successful response from inference endpoints"
+  };
+}
+
 function detectTextHints(text) {
   const raw = String(text || "").trim();
   const lower = ` ${raw.toLowerCase()} `;
@@ -623,16 +672,15 @@ module.exports = async function handler(req, res) {
         return res.status(400).json({ error: "Batch mode requires at least one non-empty line" });
       }
 
-      const items = lines.map((line) => {
-        const predicted = localFallbackSentiment(line);
-        return {
-          text: line,
-          sentiment: predicted.sentiment,
-          confidence: predicted.confidence
-        };
-      });
+      const items = [];
+      for (const line of lines) {
+        const item = await inferBatchLineWithApiFallback(line, token, configuredModel);
+        items.push(item);
+      }
 
       const summary = aggregateBatch(items);
+      const fallbackCount = items.filter((item) => item.source === "local-fallback").length;
+      const apiCount = items.length - fallbackCount;
 
       return res.status(200).json({
         mode,
@@ -641,9 +689,11 @@ module.exports = async function handler(req, res) {
         items,
         hints,
         explainability,
-        model: "batch-local-fallback",
-        source: "local-fallback",
-        warning: "Batch mode currently uses local scoring per line."
+        model: fallbackCount > 0 ? "batch-mixed-api-fallback" : "batch-huggingface",
+        source: fallbackCount > 0 ? "mixed" : "huggingface",
+        warning: fallbackCount > 0
+          ? `Batch used API for ${apiCount}/${items.length} lines and local fallback for ${fallbackCount}/${items.length} lines.`
+          : undefined
       });
     }
 
