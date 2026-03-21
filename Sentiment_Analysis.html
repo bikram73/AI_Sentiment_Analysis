@@ -687,6 +687,65 @@
 
       const trendHistory = [];
       const MAX_TREND_POINTS = 30;
+      const TRENDS_COOKIE_KEY = "sentiment_trends_v1";
+      const COOKIE_DAYS = 365;
+
+      function setCookie(name, value, days) {
+        const date = new Date();
+        date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+        document.cookie = `${name}=${encodeURIComponent(value)};expires=${date.toUTCString()};path=/;SameSite=Lax`;
+      }
+
+      function getCookie(name) {
+        const needle = `${name}=`;
+        const parts = document.cookie ? document.cookie.split(";") : [];
+        for (let i = 0; i < parts.length; i += 1) {
+          const part = parts[i].trim();
+          if (part.startsWith(needle)) {
+            return decodeURIComponent(part.slice(needle.length));
+          }
+        }
+        return "";
+      }
+
+      function saveTrendStateToCookie() {
+        const payload = {
+          counts: sentimentCounts,
+          trendHistory: trendHistory.slice(-MAX_TREND_POINTS)
+        };
+        setCookie(TRENDS_COOKIE_KEY, JSON.stringify(payload), COOKIE_DAYS);
+      }
+
+      function loadTrendStateFromCookie() {
+        const raw = getCookie(TRENDS_COOKIE_KEY);
+        if (!raw) {
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(raw);
+          const counts = parsed && parsed.counts ? parsed.counts : {};
+          const history = Array.isArray(parsed && parsed.trendHistory) ? parsed.trendHistory : [];
+
+          sentimentCounts.Positive = Number(counts.Positive || 0);
+          sentimentCounts.Negative = Number(counts.Negative || 0);
+          sentimentCounts.Neutral = Number(counts.Neutral || 0);
+
+          trendHistory.length = 0;
+          history.slice(-MAX_TREND_POINTS).forEach((item) => {
+            trendHistory.push({
+              sentiment: normalizeForCharts(item.sentiment),
+              score: Math.max(-1, Math.min(1, Number(item.score) || 0))
+            });
+          });
+        } catch {
+          // Ignore invalid cookie payload and continue with empty charts.
+        }
+      }
+
+      function clearTrendStateCookie() {
+        document.cookie = `${TRENDS_COOKIE_KEY}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;SameSite=Lax`;
+      }
 
       function normalizeForCharts(label) {
         const value = String(label || "").toLowerCase();
@@ -891,6 +950,7 @@
           trendHistory.shift();
         }
 
+        saveTrendStateToCookie();
         refreshCharts();
       }
 
@@ -1127,10 +1187,12 @@
         sentimentCounts.Negative = 0;
         sentimentCounts.Neutral = 0;
         trendHistory.length = 0;
+        clearTrendStateCookie();
         refreshCharts();
       });
 
       renderKeywordHighlights("");
+      loadTrendStateFromCookie();
       refreshCharts();
 
       analyzeBtn.addEventListener("click", async () => {
