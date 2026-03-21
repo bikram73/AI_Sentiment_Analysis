@@ -28,12 +28,48 @@ const NEGATED_NEGATIVE_PATTERNS = [
 
 const SARCASM_MARKERS = [
   "yeah right", "as if", "sure", "totally", "obviously", "/s", "sarcasm", "lol",
-  "wow", "great...", "great", "amazing...", "amazing", "sure", "nice job", "thanks a lot"
+  "wow", "great...", "great", "amazing...", "amazing", "nice job", "thanks a lot",
+
+  // New additions
+  "oh great", "just great", "perfect...", "perfect", "fantastic...", "fantastic",
+  "brilliant", "genius", "well done", "good job", "love that for me",
+  "exactly what i needed", "just what i needed", "how nice",
+  "what a surprise", "big surprise", "no way", "shocking",
+  "so helpful", "very helpful", "super helpful",
+  "awesome...", "awesome", "cool...", "cool",
+  "nice...", "nice one",
+  "great work breaking", "amazing job ruining",
+  "thanks for nothing", "great service..." ,
+  
+  // Internet / casual sarcasm
+  "lmao", "rofl", "haha", "hahaha", "funny",
+  "love this...", "love it when",
+  "couldn't be better", "best day ever",
+  
+  // Emoji-based sarcasm indicators
+  "🙄", "😒", "😑", "😐"
 ];
 
 const STRONG_NEGATION_MARKERS = [
   " not ", " never ", " no ", " hardly ", " rarely ", " without ",
-  " can't ", " cannot ", " won't ", " don't ", " didn't ", " isn't ", " wasn't "
+  " can't ", " cannot ", " won't ", " don't ", " didn't ", " isn't ", " wasn't ",
+
+  // New additions
+  " shouldn't ", " wouldn't ", " couldn't ",
+  " ain't ", " barely ", " scarcely ",
+  " nothing ", " nowhere ", " neither ", " nor ",
+  " lacks ", " lacking ", " missing ",
+  " fail ", " failed ", " failing ",
+  " refuse ", " refused ", " refusing ",
+  " deny ", " denied ", " denying ",
+  " impossible ", " unlikely ",
+  " does not ", " do not ", " did not ",
+  " is not ", " are not ", " was not ", " were not ",
+  " has not ", " have not ", " had not ",
+  " cannot stand ", " not at all ", " not really ",
+  " not good ", " not great ", " not bad ",
+  " not working ", " not useful ", " not happy ",
+  " no way ", " no chance "
 ];
 
 async function requestInference(url, text, token, extraBody = {}) {
