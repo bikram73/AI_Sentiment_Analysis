@@ -349,9 +349,49 @@ function emotionFromSentimentFallback(text) {
   return { emotion: "Neutral", confidence: base.confidence };
 }
 
+function containsAspectKeyword(clause, keyword) {
+  const text = String(clause || "").toLowerCase();
+  const normalizedKeyword = String(keyword || "").toLowerCase().trim();
+  if (!normalizedKeyword) {
+    return false;
+  }
+
+  // Keep multi-word phrase matching simple while using word boundaries
+  // for single tokens to avoid substring false positives (e.g. "ui" in "quality").
+  if (normalizedKeyword.includes(" ")) {
+    return text.includes(normalizedKeyword);
+  }
+
+  const escaped = normalizedKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`, "i").test(text);
+}
+
+function adjustAspectSentiment(aspect, clause, baseSentiment, baseConfidence) {
+  const text = String(clause || "").toLowerCase();
+
+  if (aspect === "Price") {
+    if (/\b(expensive|overpriced|pricey|costly|high price|price was high|too much)\b/i.test(text)) {
+      return { sentiment: "Negative", confidence: Math.max(baseConfidence, 80) };
+    }
+    if (/\b(cheap|affordable|low price|budget|reasonable|fair price|value for money)\b/i.test(text)) {
+      return { sentiment: "Positive", confidence: Math.max(baseConfidence, 80) };
+    }
+  }
+
+  if (aspect === "Service") {
+    if (/\b(unhelpful|rude|slow service|poor service|bad service|ignored|no response)\b/i.test(text)) {
+      return { sentiment: "Negative", confidence: Math.max(baseConfidence, 80) };
+    }
+    if (/\b(helpful|friendly|quick response|resolved|excellent service|good service)\b/i.test(text)) {
+      return { sentiment: "Positive", confidence: Math.max(baseConfidence, 80) };
+    }
+  }
+
+  return { sentiment: baseSentiment, confidence: baseConfidence };
+}
+
 function buildAbsaResult(text) {
   const rawText = String(text || "");
-  const lower = rawText.toLowerCase();
 
   const aspectMap = {
     Food: ["food", "taste", "meal", "dish", "flavor"],
@@ -363,24 +403,27 @@ function buildAbsaResult(text) {
   };
 
   const clauses = rawText
-    .split(/(?<=[.!?])\s+|\bbut\b|\bhowever\b|\bthough\b/gi)
+    .split(/(?<=[.!?])\s+|,\s+|\bbut\b|\bhowever\b|\bthough\b|\balthough\b|\byet\b|\bwhile\b/gi)
     .map((part) => part.trim())
     .filter(Boolean);
 
   const aspects = [];
 
   for (const [aspect, keywords] of Object.entries(aspectMap)) {
-    const hit = clauses.find((clause) => keywords.some((kw) => clause.toLowerCase().includes(kw)));
-    if (!hit) {
+    const matchedClauses = clauses.filter((clause) => keywords.some((kw) => containsAspectKeyword(clause, kw)));
+    if (matchedClauses.length === 0) {
       continue;
     }
 
-    const local = localFallbackSentiment(hit);
-    aspects.push({
-      aspect,
-      sentiment: local.sentiment,
-      confidence: local.confidence,
-      text: hit
+    matchedClauses.forEach((clause) => {
+      const local = localFallbackSentiment(clause);
+      const adjusted = adjustAspectSentiment(aspect, clause, local.sentiment, local.confidence);
+      aspects.push({
+        aspect,
+        sentiment: adjusted.sentiment,
+        confidence: adjusted.confidence,
+        text: clause
+      });
     });
   }
 
