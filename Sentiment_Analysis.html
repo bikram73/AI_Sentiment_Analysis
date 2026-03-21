@@ -391,39 +391,6 @@
         line-height: 1.45;
       }
 
-      .hint-tags {
-        margin-top: 8px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .hint-tag {
-        font-size: 12px;
-        font-weight: 700;
-        border-radius: 999px;
-        padding: 5px 10px;
-        border: 1px solid transparent;
-      }
-
-      .hint-tag.negation {
-        background: #fff4d6;
-        color: #9c6644;
-        border-color: #f4d29a;
-      }
-
-      .hint-tag.sarcasm {
-        background: #ffe9ec;
-        color: #9d0208;
-        border-color: #ffc0cb;
-      }
-
-      .hint-tag.none {
-        background: #eef4ff;
-        color: #355070;
-        border-color: #c9d5ea;
-      }
-
       .charts-panel {
         padding: 18px;
       }
@@ -575,9 +542,6 @@
             <h4>Detailed Output</h4>
             <div class="details-body" id="detailsBody">No analysis yet.</div>
           </div>
-          <div class="hint-tags" id="hintTags">
-            <span class="hint-tag none">No warning tags.</span>
-          </div>
           <p class="muted" id="status">Enter text and click Analyze Sentiment.</p>
         </aside>
       </section>
@@ -709,7 +673,6 @@
       const statusEl = document.getElementById("status");
       const sentimentChipEl = document.getElementById("sentimentChip");
       const detailsBodyEl = document.getElementById("detailsBody");
-      const hintTagsEl = document.getElementById("hintTags");
       const textBackdropEl = document.getElementById("textBackdrop");
       const pieCanvas = document.getElementById("sentimentPieChart");
       const barCanvas = document.getElementById("sentimentBarChart");
@@ -1175,25 +1138,6 @@
         detailsBodyEl.textContent = "Single-label prediction complete.";
       }
 
-      function renderHintTags(hints) {
-        const list = Array.isArray(hints) ? hints.filter(Boolean) : [];
-
-        if (list.length === 0) {
-          hintTagsEl.innerHTML = '<span class="hint-tag none">No warning tags.</span>';
-          return;
-        }
-
-        const tags = list
-          .map((hint) => {
-            const lower = String(hint).toLowerCase();
-            const typeClass = lower.includes("sarcasm") ? "sarcasm" : "negation";
-            return `<span class="hint-tag ${typeClass}">${escapeHtml(hint)}</span>`;
-          })
-          .join("");
-
-        hintTagsEl.innerHTML = tags;
-      }
-
       populateExamples(modeSelect.value);
 
       exampleSelect.addEventListener("change", () => {
@@ -1235,7 +1179,6 @@
         statusEl.textContent = modeSelect.value === "batch"
           ? "Enter multiple lines and click Analyze Batch."
           : "Enter text and click Analyze Sentiment.";
-        renderHintTags([]);
         renderKeywordHighlights("");
       });
 
@@ -1322,7 +1265,6 @@
           }
 
           renderDetails(data);
-          renderHintTags(data.hints);
           const sourceNote = data.source === "local-fallback" ? " (fallback mode)" : "";
           if (data.source === "local-fallback" && data.reason) {
             statusEl.textContent = `Model: ${data.model}${sourceNote} | Reason: ${data.reason}`;

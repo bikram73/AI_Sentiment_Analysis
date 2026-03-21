@@ -26,15 +26,6 @@ const NEGATED_NEGATIVE_PATTERNS = [
   "not bad", "not terrible", "not worst", "not awful"
 ];
 
-const SARCASM_MARKERS = [
-  "yeah right", "as if", "sure", "totally", "obviously", "/s", "sarcasm", "lol"
-];
-
-const STRONG_NEGATION_MARKERS = [
-  " not ", " never ", " no ", " hardly ", " rarely ", " without ",
-  " can't ", " cannot ", " won't ", " don't ", " didn't ", " isn't ", " wasn't "
-];
-
 async function requestInference(url, text, token, extraBody = {}) {
   const headers = {
     "Content-Type": "application/json"
@@ -438,40 +429,6 @@ function aggregateBatch(items) {
   return { sentiment, confidence };
 }
 
-function detectTextHints(text) {
-  const raw = String(text || "").trim();
-  const lower = ` ${raw.toLowerCase()} `;
-  const hints = [];
-
-  if (!raw) {
-    return hints;
-  }
-
-  const negationHits = STRONG_NEGATION_MARKERS.reduce(
-    (count, marker) => count + (lower.includes(marker) ? 1 : 0),
-    0
-  );
-
-  const hasNegatedPhrase =
-    NEGATED_POSITIVE_PATTERNS.some((phrase) => lower.includes(` ${phrase} `)) ||
-    NEGATED_NEGATIVE_PATTERNS.some((phrase) => lower.includes(` ${phrase} `));
-
-  if (negationHits >= 2 || hasNegatedPhrase) {
-    hints.push("Contains strong negation.");
-  }
-
-  const hasSarcasmMarker = SARCASM_MARKERS.some((marker) => lower.includes(` ${marker} `) || lower.endsWith(marker));
-  const hasPolarityMix =
-    STRONG_POSITIVE_TERMS.some((term) => lower.includes(term)) &&
-    STRONG_NEGATIVE_TERMS.some((term) => lower.includes(term));
-
-  if (hasSarcasmMarker || (hasPolarityMix && negationHits > 0)) {
-    hints.push("Possible sarcasm.");
-  }
-
-  return hints;
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -480,7 +437,6 @@ module.exports = async function handler(req, res) {
   try {
     const text = String(req.body?.text || "").trim();
     const mode = getRequestedMode(req.body?.mode);
-    const hints = detectTextHints(text);
 
     if (!text) {
       return res.status(400).json({ error: "Text is required" });
@@ -514,7 +470,6 @@ module.exports = async function handler(req, res) {
         sentiment: summary.sentiment,
         confidence: summary.confidence,
         items,
-        hints,
         model: "batch-local-fallback",
         source: "local-fallback",
         warning: "Batch mode currently uses local scoring per line."
@@ -528,7 +483,6 @@ module.exports = async function handler(req, res) {
         sentiment: absa.overallSentiment,
         confidence: absa.overallConfidence,
         aspects: absa.aspects,
-        hints,
         model: "absa-heuristic",
         source: "local-absa"
       });
@@ -584,7 +538,6 @@ module.exports = async function handler(req, res) {
           emotion: fallbackEmotion.emotion,
           confidence: fallbackEmotion.confidence,
           top_emotions: [{ label: fallbackEmotion.emotion, score: Number((fallbackEmotion.confidence / 100).toFixed(4)) }],
-          hints,
           model: "emotion-fallback",
           source: "local-fallback",
           reason: lastErrorText || "No successful response from inference endpoints"
@@ -596,7 +549,6 @@ module.exports = async function handler(req, res) {
         mode,
         sentiment: fallback.sentiment,
         confidence: fallback.confidence,
-        hints,
         model: "sentiment-js-fallback",
         source: "local-fallback",
         reason: lastErrorText || "No successful response from inference endpoints"
@@ -614,7 +566,6 @@ module.exports = async function handler(req, res) {
         emotion: top.label,
         confidence: Number((top.score * 100).toFixed(2)),
         top_emotions: predictions.slice(0, 5),
-        hints,
         model: selectedModel,
         source: "huggingface"
       });
@@ -627,7 +578,6 @@ module.exports = async function handler(req, res) {
       mode,
       sentiment: normalized.sentiment,
       confidence: normalized.confidence,
-      hints,
       model: selectedModel,
       source: "huggingface"
     });
