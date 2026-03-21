@@ -27,7 +27,8 @@ const NEGATED_NEGATIVE_PATTERNS = [
 ];
 
 const SARCASM_MARKERS = [
-  "yeah right", "as if", "sure", "totally", "obviously", "/s", "sarcasm", "lol"
+  "yeah right", "as if", "sure", "totally", "obviously", "/s", "sarcasm", "lol",
+  "wow", "great...", "great", "amazing...", "amazing", "sure", "nice job", "thanks a lot"
 ];
 
 const STRONG_NEGATION_MARKERS = [
