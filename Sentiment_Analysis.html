@@ -391,8 +391,90 @@
         line-height: 1.45;
       }
 
+      .charts-panel {
+        padding: 18px;
+      }
+
+      .charts-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .charts-head h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .charts-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+
+      .chart-card {
+        border: 1px solid #dbe3f3;
+        border-radius: 14px;
+        background: #f8fbff;
+        padding: 10px;
+      }
+
+      .chart-card h4 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        color: var(--muted);
+        letter-spacing: 0.2px;
+      }
+
+      .chart-card canvas {
+        width: 100%;
+        height: 220px;
+        display: block;
+      }
+
+      .chart-card.full {
+        grid-column: 1 / -1;
+      }
+
+      .mini-btn {
+        width: auto;
+        border-radius: 10px;
+        border: 1px solid #c3d2eb;
+        padding: 8px 12px;
+        background: #fff;
+        color: #355070;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .chart-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .chart-legend span {
+        font-size: 12px;
+        color: #445268;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #eef4ff;
+      }
+
+      .legend-positive { border-left: 5px solid #2b9348; }
+      .legend-negative { border-left: 5px solid #ba181b; }
+      .legend-neutral { border-left: 5px solid #f59e0b; }
+
       @media (max-width: 860px) {
         .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .charts-grid {
           grid-template-columns: 1fr;
         }
 
@@ -462,6 +544,32 @@
           </div>
           <p class="muted" id="status">Enter text and click Analyze Sentiment.</p>
         </aside>
+      </section>
+
+      <section class="panel charts-panel">
+        <div class="charts-head">
+          <h3>Charts And Trends</h3>
+          <button type="button" class="mini-btn" id="resetTrendsBtn">Reset Trends</button>
+        </div>
+        <div class="charts-grid">
+          <div class="chart-card">
+            <h4>Sentiment Distribution (Pie)</h4>
+            <canvas id="sentimentPieChart" width="420" height="240"></canvas>
+          </div>
+          <div class="chart-card">
+            <h4>Sentiment Distribution (Bar)</h4>
+            <canvas id="sentimentBarChart" width="420" height="240"></canvas>
+          </div>
+          <div class="chart-card full">
+            <h4>Timeline Trend (Latest Analyses)</h4>
+            <canvas id="sentimentTimelineChart" width="860" height="260"></canvas>
+          </div>
+        </div>
+        <div class="chart-legend">
+          <span class="legend-positive">Positive</span>
+          <span class="legend-negative">Negative</span>
+          <span class="legend-neutral">Neutral</span>
+        </div>
       </section>
     </main>
 
@@ -566,6 +674,225 @@
       const sentimentChipEl = document.getElementById("sentimentChip");
       const detailsBodyEl = document.getElementById("detailsBody");
       const textBackdropEl = document.getElementById("textBackdrop");
+      const pieCanvas = document.getElementById("sentimentPieChart");
+      const barCanvas = document.getElementById("sentimentBarChart");
+      const timelineCanvas = document.getElementById("sentimentTimelineChart");
+      const resetTrendsBtn = document.getElementById("resetTrendsBtn");
+
+      const sentimentCounts = {
+        Positive: 0,
+        Negative: 0,
+        Neutral: 0
+      };
+
+      const trendHistory = [];
+      const MAX_TREND_POINTS = 30;
+
+      function normalizeForCharts(label) {
+        const value = String(label || "").toLowerCase();
+        if (value.includes("positive") || value.includes("joy") || value.includes("love")) {
+          return "Positive";
+        }
+        if (
+          value.includes("negative") ||
+          value.includes("anger") ||
+          value.includes("sad") ||
+          value.includes("fear") ||
+          value.includes("disgust")
+        ) {
+          return "Negative";
+        }
+        return "Neutral";
+      }
+
+      function getChartColor(sentiment) {
+        if (sentiment === "Positive") return "#2b9348";
+        if (sentiment === "Negative") return "#ba181b";
+        return "#f59e0b";
+      }
+
+      function drawPieChart() {
+        const ctx = pieCanvas.getContext("2d");
+        const w = pieCanvas.width;
+        const h = pieCanvas.height;
+        const cx = w / 2;
+        const cy = h / 2;
+        const radius = Math.min(w, h) * 0.32;
+
+        ctx.clearRect(0, 0, w, h);
+
+        const values = [sentimentCounts.Positive, sentimentCounts.Negative, sentimentCounts.Neutral];
+        const labels = ["Positive", "Negative", "Neutral"];
+        const total = values.reduce((sum, n) => sum + n, 0);
+
+        if (total === 0) {
+          ctx.fillStyle = "#718198";
+          ctx.font = "600 14px Outfit";
+          ctx.textAlign = "center";
+          ctx.fillText("Run analyses to build distribution", cx, cy);
+          return;
+        }
+
+        let start = -Math.PI / 2;
+        for (let i = 0; i < values.length; i += 1) {
+          const ratio = values[i] / total;
+          const end = start + ratio * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, radius, start, end);
+          ctx.closePath();
+          ctx.fillStyle = getChartColor(labels[i]);
+          ctx.fill();
+          start = end;
+        }
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * 0.54, 0, Math.PI * 2);
+        ctx.fillStyle = "#f8fbff";
+        ctx.fill();
+
+        ctx.fillStyle = "#14213d";
+        ctx.font = "700 14px Outfit";
+        ctx.textAlign = "center";
+        ctx.fillText(`${total} analyses`, cx, cy + 4);
+      }
+
+      function drawBarChart() {
+        const ctx = barCanvas.getContext("2d");
+        const w = barCanvas.width;
+        const h = barCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const labels = ["Positive", "Negative", "Neutral"];
+        const values = [sentimentCounts.Positive, sentimentCounts.Negative, sentimentCounts.Neutral];
+        const maxVal = Math.max(1, ...values);
+
+        const chartLeft = 42;
+        const chartBottom = h - 30;
+        const chartTop = 24;
+        const chartHeight = chartBottom - chartTop;
+        const barWidth = 62;
+        const gap = 50;
+
+        ctx.strokeStyle = "#d8dfef";
+        ctx.beginPath();
+        ctx.moveTo(chartLeft, chartTop);
+        ctx.lineTo(chartLeft, chartBottom);
+        ctx.lineTo(w - 24, chartBottom);
+        ctx.stroke();
+
+        labels.forEach((label, idx) => {
+          const x = chartLeft + 34 + idx * (barWidth + gap);
+          const value = values[idx];
+          const barHeight = (value / maxVal) * chartHeight;
+          const y = chartBottom - barHeight;
+
+          ctx.fillStyle = getChartColor(label);
+          ctx.fillRect(x, y, barWidth, barHeight);
+
+          ctx.fillStyle = "#475569";
+          ctx.font = "600 12px Outfit";
+          ctx.textAlign = "center";
+          ctx.fillText(label, x + barWidth / 2, chartBottom + 16);
+          ctx.fillText(String(value), x + barWidth / 2, y - 8);
+        });
+      }
+
+      function drawTimelineChart() {
+        const ctx = timelineCanvas.getContext("2d");
+        const w = timelineCanvas.width;
+        const h = timelineCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const left = 50;
+        const right = w - 20;
+        const top = 18;
+        const bottom = h - 28;
+        const mid = (top + bottom) / 2;
+
+        ctx.strokeStyle = "#d8dfef";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(left, top);
+        ctx.lineTo(left, bottom);
+        ctx.lineTo(right, bottom);
+        ctx.stroke();
+
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(left, mid);
+        ctx.lineTo(right, mid);
+        ctx.strokeStyle = "#94a3b8";
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = "#64748b";
+        ctx.font = "600 12px Outfit";
+        ctx.textAlign = "right";
+        ctx.fillText("+1", left - 8, top + 4);
+        ctx.fillText("0", left - 8, mid + 4);
+        ctx.fillText("-1", left - 8, bottom + 2);
+
+        if (trendHistory.length === 0) {
+          ctx.fillStyle = "#718198";
+          ctx.font = "600 14px Outfit";
+          ctx.textAlign = "center";
+          ctx.fillText("Timeline builds after each analysis", (left + right) / 2, mid);
+          return;
+        }
+
+        const step = trendHistory.length > 1 ? (right - left) / (trendHistory.length - 1) : 0;
+        const toY = (score) => mid - score * ((bottom - top) / 2);
+
+        ctx.beginPath();
+        trendHistory.forEach((point, idx) => {
+          const x = left + step * idx;
+          const y = toY(point.score);
+          if (idx === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+        ctx.strokeStyle = "#0f766e";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        trendHistory.forEach((point, idx) => {
+          const x = left + step * idx;
+          const y = toY(point.score);
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = getChartColor(point.sentiment);
+          ctx.fill();
+        });
+      }
+
+      function refreshCharts() {
+        drawPieChart();
+        drawBarChart();
+        drawTimelineChart();
+      }
+
+      function addSentimentToCharts(sentiment, confidence) {
+        const normalized = normalizeForCharts(sentiment);
+        sentimentCounts[normalized] += 1;
+
+        const baseScore = normalized === "Positive" ? 1 : normalized === "Negative" ? -1 : 0;
+        const confidenceFactor = Math.max(0, Math.min(100, Number(confidence) || 0)) / 100;
+        const weightedScore = Number((baseScore * (0.35 + 0.65 * confidenceFactor)).toFixed(3));
+
+        trendHistory.push({
+          sentiment: normalized,
+          score: weightedScore
+        });
+
+        if (trendHistory.length > MAX_TREND_POINTS) {
+          trendHistory.shift();
+        }
+
+        refreshCharts();
+      }
 
       const POSITIVE_KEYWORDS = [
         "love", "great", "excellent", "amazing", "fantastic", "helpful", "clean", "fast", "good",
@@ -795,7 +1122,16 @@
         renderKeywordHighlights("");
       });
 
+      resetTrendsBtn.addEventListener("click", () => {
+        sentimentCounts.Positive = 0;
+        sentimentCounts.Negative = 0;
+        sentimentCounts.Neutral = 0;
+        trendHistory.length = 0;
+        refreshCharts();
+      });
+
       renderKeywordHighlights("");
+      refreshCharts();
 
       analyzeBtn.addEventListener("click", async () => {
         const text = textInput.value.trim();
@@ -843,16 +1179,27 @@
             setSentimentChip(data.sentiment || "Neutral");
             confidenceEl.textContent = `${Number(data.confidence || 0).toFixed(2)}%`;
             meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence || 0)))}%`;
+            if (Array.isArray(data.items) && data.items.length > 0) {
+              data.items.forEach((item) => addSentimentToCharts(item.sentiment || "Neutral", Number(item.confidence || 0)));
+            } else {
+              addSentimentToCharts(data.sentiment || "Neutral", Number(data.confidence || 0));
+            }
           } else if (mode === "emotion") {
             sentimentEl.textContent = `${emojiMap[data.emotion] || "🙂"} ${data.emotion || "Neutral"}`;
             setSentimentChip(data.emotion || "Neutral");
             confidenceEl.textContent = `${Number(data.confidence || 0).toFixed(2)}%`;
             meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence || 0)))}%`;
+            addSentimentToCharts(data.emotion || "Neutral", Number(data.confidence || 0));
           } else {
             sentimentEl.textContent = `${emojiMap[data.sentiment] || "🙂"} ${data.sentiment}`;
             setSentimentChip(data.sentiment);
             confidenceEl.textContent = `${Number(data.confidence).toFixed(2)}%`;
             meterEl.style.width = `${Math.max(0, Math.min(100, Number(data.confidence)))}%`;
+            if (mode === "absa" && Array.isArray(data.aspects) && data.aspects.length > 0) {
+              data.aspects.forEach((aspect) => addSentimentToCharts(aspect.sentiment || "Neutral", Number(aspect.confidence || 0)));
+            } else {
+              addSentimentToCharts(data.sentiment || "Neutral", Number(data.confidence || 0));
+            }
           }
 
           renderDetails(data);
