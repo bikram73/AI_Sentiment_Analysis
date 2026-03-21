@@ -128,3 +128,7 @@ On first launch, the model is downloaded and cached locally. This can take time 
 - User history and export options
 - Confidence trend charts
 - Custom model selection per analysis mode
+
+## License
+
+MIT. See `LICENSE`.
