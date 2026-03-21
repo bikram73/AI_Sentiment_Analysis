@@ -292,6 +292,30 @@
         margin-top: 14px;
       }
 
+      .lang-options {
+        margin-top: 10px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .lang-option-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: #334155;
+      }
+
+      .lang-option-item input {
+        width: auto;
+      }
+
+      .lang-meta {
+        margin: 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
       .actions button:last-child {
         background: linear-gradient(135deg, #4b5563, #334155);
       }
@@ -523,6 +547,18 @@
             <textarea id="text" placeholder="Type your review, feedback, or message here..."></textarea>
           </div>
 
+          <div class="lang-options">
+            <label class="lang-option-item" for="autoDetectLang">
+              <input type="checkbox" id="autoDetectLang" checked />
+              Auto-detect language
+            </label>
+            <label class="lang-option-item" for="translateBeforeAnalyze">
+              <input type="checkbox" id="translateBeforeAnalyze" />
+              Translate to English before analysis
+            </label>
+            <p class="lang-meta" id="languageMeta">Language: Not detected yet.</p>
+          </div>
+
           <div class="actions">
             <button id="analyzeBtn">Analyze Sentiment</button>
             <button id="clearBtn" type="button">Clear</button>
@@ -674,6 +710,9 @@
       const sentimentChipEl = document.getElementById("sentimentChip");
       const detailsBodyEl = document.getElementById("detailsBody");
       const textBackdropEl = document.getElementById("textBackdrop");
+      const autoDetectLangEl = document.getElementById("autoDetectLang");
+      const translateBeforeAnalyzeEl = document.getElementById("translateBeforeAnalyze");
+      const languageMetaEl = document.getElementById("languageMeta");
       const pieCanvas = document.getElementById("sentimentPieChart");
       const barCanvas = document.getElementById("sentimentBarChart");
       const timelineCanvas = document.getElementById("sentimentTimelineChart");
@@ -1084,6 +1123,22 @@
         sentimentChipEl.textContent = "Ready";
       }
 
+      function updateLanguageMeta(languageData) {
+        if (!languageData || typeof languageData !== "object") {
+          languageMetaEl.textContent = "Language: Not detected yet.";
+          return;
+        }
+
+        const name = String(languageData.detected_name || "Unknown");
+        const code = String(languageData.detected_code || "unknown").toUpperCase();
+        const confidence = Number(languageData.detected_confidence || 0);
+        const translated = Boolean(languageData.translation_applied);
+
+        languageMetaEl.textContent = translated
+          ? `Language: ${name} (${code}) - translated to English before analysis.`
+          : `Language: ${name} (${code}) - confidence ${confidence.toFixed(2)}.`;
+      }
+
       function renderDetails(data) {
         const mode = String(data.mode || modeSelect.value || "sentiment");
 
@@ -1158,6 +1213,10 @@
         detailsBodyEl.textContent = `Examples updated for ${modeSelect.options[modeSelect.selectedIndex].text}.`;
         statusEl.textContent = "Select an example or enter your own text.";
         renderKeywordHighlights(textInput.value);
+
+        if (modeSelect.value === "multilingual") {
+          translateBeforeAnalyzeEl.checked = false;
+        }
       });
 
       textInput.addEventListener("input", () => {
@@ -1179,6 +1238,7 @@
         statusEl.textContent = modeSelect.value === "batch"
           ? "Enter multiple lines and click Analyze Batch."
           : "Enter text and click Analyze Sentiment.";
+        languageMetaEl.textContent = "Language: Not detected yet.";
         renderKeywordHighlights("");
       });
 
@@ -1214,7 +1274,14 @@
             headers: {
               "Content-Type": "application/json"
             },
-            body: JSON.stringify({ text, mode })
+            body: JSON.stringify({
+              text,
+              mode,
+              options: {
+                autoDetectLanguage: autoDetectLangEl.checked,
+                translateToEnglish: translateBeforeAnalyzeEl.checked
+              }
+            })
           });
 
           const data = await response.json();
@@ -1263,6 +1330,8 @@
               addSentimentToCharts(data.sentiment || "Neutral", Number(data.confidence || 0));
             }
           }
+
+          updateLanguageMeta(data.language);
 
           renderDetails(data);
           const sourceNote = data.source === "local-fallback" ? " (fallback mode)" : "";

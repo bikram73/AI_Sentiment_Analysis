@@ -26,6 +26,40 @@ const NEGATED_NEGATIVE_PATTERNS = [
   "not bad", "not terrible", "not worst", "not awful"
 ];
 
+const LANGUAGE_NAME_MAP = {
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  pt: "Portuguese",
+  hi: "Hindi",
+  ar: "Arabic",
+  ja: "Japanese",
+  ko: "Korean",
+  zh: "Chinese",
+  ru: "Russian",
+  tr: "Turkish",
+  nl: "Dutch",
+  ro: "Romanian",
+  pl: "Polish",
+  bn: "Bengali",
+  kn: "Kannada",
+  unknown: "Unknown"
+};
+
+const LATIN_LANGUAGE_HINTS = {
+  es: [" el ", " la ", " que ", " de ", " no ", " muy ", " este ", " esta ", " excelente ", " producto "],
+  fr: [" le ", " la ", " que ", " de ", " pas ", " tres ", " service ", " produit "],
+  de: [" der ", " die ", " und ", " nicht ", " sehr ", " das ", " ist ", " gut ", " schlecht "],
+  it: [" il ", " la ", " che ", " non ", " molto ", " questo ", " servizio ", " prodotto "],
+  pt: [" o ", " a ", " que ", " nao ", " muito ", " este ", " produto ", " servico "],
+  tr: [" ve ", " bu ", " cok ", " degil ", " hizmet ", " urun "],
+  nl: [" de ", " het ", " en ", " niet ", " erg ", " service ", " product "],
+  ro: [" si ", " este ", " foarte ", " nu ", " produs ", " serviciu "],
+  pl: [" i ", " jest ", " bardzo ", " nie ", " produkt ", " usluga "]
+};
+
 async function requestInference(url, text, token, extraBody = {}) {
   const headers = {
     "Content-Type": "application/json"
@@ -429,6 +463,84 @@ function aggregateBatch(items) {
   return { sentiment, confidence };
 }
 
+function detectLanguage(text) {
+  const raw = String(text || "");
+  const lower = ` ${raw.toLowerCase()} `;
+
+  if (!raw.trim()) {
+    return { code: "unknown", name: LANGUAGE_NAME_MAP.unknown, confidence: 0.0 };
+  }
+
+  if (/[\u0C80-\u0CFF]/.test(raw)) return { code: "kn", name: LANGUAGE_NAME_MAP.kn, confidence: 0.98 };
+  if (/[\u0980-\u09FF]/.test(raw)) return { code: "bn", name: LANGUAGE_NAME_MAP.bn, confidence: 0.98 };
+  if (/[\u0600-\u06FF]/.test(raw)) return { code: "ar", name: LANGUAGE_NAME_MAP.ar, confidence: 0.98 };
+  if (/[\u0900-\u097F]/.test(raw)) return { code: "hi", name: LANGUAGE_NAME_MAP.hi, confidence: 0.98 };
+  if (/[\uAC00-\uD7AF]/.test(raw)) return { code: "ko", name: LANGUAGE_NAME_MAP.ko, confidence: 0.98 };
+  if (/[\u3040-\u30FF]/.test(raw)) return { code: "ja", name: LANGUAGE_NAME_MAP.ja, confidence: 0.98 };
+  if (/[\u4E00-\u9FFF]/.test(raw)) return { code: "zh", name: LANGUAGE_NAME_MAP.zh, confidence: 0.96 };
+  if (/[\u0400-\u04FF]/.test(raw)) return { code: "ru", name: LANGUAGE_NAME_MAP.ru, confidence: 0.96 };
+
+  let bestCode = "en";
+  let bestScore = 0;
+
+  for (const [code, hints] of Object.entries(LATIN_LANGUAGE_HINTS)) {
+    const score = hints.reduce((sum, hint) => sum + (lower.includes(hint) ? 1 : 0), 0);
+    if (score > bestScore) {
+      bestCode = code;
+      bestScore = score;
+    }
+  }
+
+  if (bestScore > 0) {
+    return {
+      code: bestCode,
+      name: LANGUAGE_NAME_MAP[bestCode] || "Unknown",
+      confidence: Math.min(0.92, 0.5 + bestScore * 0.08)
+    };
+  }
+
+  return { code: "en", name: LANGUAGE_NAME_MAP.en, confidence: 0.58 };
+}
+
+async function translateToEnglish(text, sourceLanguage = "auto") {
+  const source = String(sourceLanguage || "auto").toLowerCase();
+  const payload = {
+    q: String(text || ""),
+    source,
+    target: "en",
+    format: "text"
+  };
+
+  const endpoints = [
+    "https://libretranslate.de/translate",
+    "https://translate.argosopentech.com/translate"
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const data = await response.json();
+      const translated = String(data?.translatedText || "").trim();
+      if (translated) {
+        return { translatedText: translated, provider: endpoint };
+      }
+    } catch {
+      // Try next endpoint.
+    }
+  }
+
+  return null;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -437,10 +549,45 @@ module.exports = async function handler(req, res) {
   try {
     const text = String(req.body?.text || "").trim();
     const mode = getRequestedMode(req.body?.mode);
+    const autoDetectLanguage = req.body?.options?.autoDetectLanguage !== false;
+    const translateBeforeAnalysis = Boolean(req.body?.options?.translateToEnglish);
 
     if (!text) {
       return res.status(400).json({ error: "Text is required" });
     }
+
+    const language = autoDetectLanguage
+      ? detectLanguage(text)
+      : { code: "unknown", name: LANGUAGE_NAME_MAP.unknown, confidence: 0.0 };
+
+    let textForAnalysis = text;
+    let translationApplied = false;
+    let translationWarning = "";
+    let translationProvider = "";
+
+    if (translateBeforeAnalysis) {
+      const source = language.code === "unknown" ? "auto" : language.code;
+      if (source !== "en") {
+        const translated = await translateToEnglish(text, source);
+        if (translated?.translatedText) {
+          textForAnalysis = translated.translatedText;
+          translationApplied = true;
+          translationProvider = translated.provider;
+        } else {
+          translationWarning = "Translation service unavailable, analyzed original text.";
+        }
+      }
+    }
+
+    const languageMeta = {
+      detected_code: language.code,
+      detected_name: language.name,
+      detected_confidence: Number(language.confidence.toFixed(2)),
+      translation_requested: translateBeforeAnalysis,
+      translation_applied: translationApplied,
+      translation_provider: translationProvider || null,
+      translated_text: translationApplied ? textForAnalysis : null
+    };
 
     const token = cleanToken(
       process.env.HUGGINGFACE_API_TOKEN || process.env.HF_TOKEN || process.env.HUGGINGFACEHUB_API_TOKEN || ""
@@ -449,7 +596,7 @@ module.exports = async function handler(req, res) {
     const configuredModel = cleanModelId(DEFAULT_MODEL);
 
     if (mode === "batch") {
-      const lines = splitBatchInputs(text);
+      const lines = splitBatchInputs(textForAnalysis);
       if (lines.length === 0) {
         return res.status(400).json({ error: "Batch mode requires at least one non-empty line" });
       }
@@ -470,21 +617,24 @@ module.exports = async function handler(req, res) {
         sentiment: summary.sentiment,
         confidence: summary.confidence,
         items,
+        language: languageMeta,
         model: "batch-local-fallback",
         source: "local-fallback",
-        warning: "Batch mode currently uses local scoring per line."
+        warning: translationWarning || "Batch mode currently uses local scoring per line."
       });
     }
 
     if (mode === "absa") {
-      const absa = buildAbsaResult(text);
+      const absa = buildAbsaResult(textForAnalysis);
       return res.status(200).json({
         mode,
         sentiment: absa.overallSentiment,
         confidence: absa.overallConfidence,
         aspects: absa.aspects,
+        language: languageMeta,
         model: "absa-heuristic",
-        source: "local-absa"
+        source: "local-absa",
+        warning: translationWarning || undefined
       });
     }
 
@@ -501,7 +651,7 @@ module.exports = async function handler(req, res) {
 
       // Attempt with token first, then anonymous (public model path).
       const extraBody = mode === "emotion" ? { parameters: { top_k: null } } : {};
-      let result = await requestInference(url, text, token, extraBody);
+      let result = await requestInference(url, textForAnalysis, token, extraBody);
       response = result.response;
       data = result.data;
       lastErrorText = summarizeHfError(response, data);
@@ -511,7 +661,7 @@ module.exports = async function handler(req, res) {
       // Some token types cannot call provider-routed inference. Retry once
       // anonymously for public models before failing.
       if (!response.ok && token && permissionError) {
-        result = await requestInference(url, text, "", extraBody);
+        result = await requestInference(url, textForAnalysis, "", extraBody);
         response = result.response;
         data = result.data;
         lastErrorText = summarizeHfError(response, data);
@@ -532,26 +682,30 @@ module.exports = async function handler(req, res) {
 
     if (!response || !response.ok) {
       if (mode === "emotion") {
-        const fallbackEmotion = emotionFromSentimentFallback(text);
+        const fallbackEmotion = emotionFromSentimentFallback(textForAnalysis);
         return res.status(200).json({
           mode,
           emotion: fallbackEmotion.emotion,
           confidence: fallbackEmotion.confidence,
           top_emotions: [{ label: fallbackEmotion.emotion, score: Number((fallbackEmotion.confidence / 100).toFixed(4)) }],
+          language: languageMeta,
           model: "emotion-fallback",
           source: "local-fallback",
-          reason: lastErrorText || "No successful response from inference endpoints"
+          reason: lastErrorText || "No successful response from inference endpoints",
+          warning: translationWarning || undefined
         });
       }
 
-      const fallback = localFallbackSentiment(text);
+      const fallback = localFallbackSentiment(textForAnalysis);
       return res.status(200).json({
         mode,
         sentiment: fallback.sentiment,
         confidence: fallback.confidence,
+        language: languageMeta,
         model: "sentiment-js-fallback",
         source: "local-fallback",
-        reason: lastErrorText || "No successful response from inference endpoints"
+        reason: lastErrorText || "No successful response from inference endpoints",
+        warning: translationWarning || undefined
       });
     }
 
@@ -566,8 +720,10 @@ module.exports = async function handler(req, res) {
         emotion: top.label,
         confidence: Number((top.score * 100).toFixed(2)),
         top_emotions: predictions.slice(0, 5),
+        language: languageMeta,
         model: selectedModel,
-        source: "huggingface"
+        source: "huggingface",
+        warning: translationWarning || undefined
       });
     }
 
@@ -578,8 +734,10 @@ module.exports = async function handler(req, res) {
       mode,
       sentiment: normalized.sentiment,
       confidence: normalized.confidence,
+      language: languageMeta,
       model: selectedModel,
-      source: "huggingface"
+      source: "huggingface",
+      warning: translationWarning || undefined
     });
   } catch (error) {
     return res.status(500).json({
